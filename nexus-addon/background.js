@@ -29,7 +29,7 @@ const INTEL_KEEP = 200;
 const ALARM = 'nexus-scrape';
 const INTERVAL_MIN = 15;
 // Bump this when stored data shape changes; add a MIGRATIONS entry for it.
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 12;
 
 // ── Setup ──────────────────────────────────────────────────────────────────
 
@@ -2688,6 +2688,40 @@ const MIGRATIONS = {
       });
     }
     console.log(`[NexusAccounting] v11 migration: ${Object.keys(patch).length} keys scoped to '${U}:'.`);
+  },
+  // v12: Scouting filters/history are universe-scoped now. Move legacy
+  // unscoped scouting keys into s0:* (merge with existing scoped values),
+  // then remove the legacy keys.
+  12: async () => {
+    const U = DEFAULT_UNIVERSE;
+    const LEGACY_KEYS = ['survey_zone_filter', 'debris_zone_filter', 'debris_inv_history'];
+    const scopedKeys = LEGACY_KEYS.map(k => storeKey(U, k));
+    const all = await browser.storage.local.get([...LEGACY_KEYS, ...scopedKeys]);
+    const patch = {};
+    const remove = [];
+
+    for (const k of LEGACY_KEYS) {
+      const scoped = storeKey(U, k);
+      const legacyVal = all[k];
+      if (legacyVal === undefined) continue;
+
+      if (all[scoped] === undefined) {
+        patch[scoped] = legacyVal;
+      } else if (Array.isArray(legacyVal) && Array.isArray(all[scoped])) {
+        patch[scoped] = [...new Set([...legacyVal, ...all[scoped]])];
+      } else if (
+        legacyVal && typeof legacyVal === 'object' && !Array.isArray(legacyVal) &&
+        all[scoped] && typeof all[scoped] === 'object' && !Array.isArray(all[scoped])
+      ) {
+        patch[scoped] = { ...legacyVal, ...all[scoped] };
+      }
+
+      remove.push(k);
+    }
+
+    if (Object.keys(patch).length) await browser.storage.local.set(patch);
+    if (remove.length) await browser.storage.local.remove(remove);
+    console.log(`[NexusAccounting] v12 migration: moved ${remove.length} scouting legacy keys to '${U}:' scope.`);
   },
 };
 

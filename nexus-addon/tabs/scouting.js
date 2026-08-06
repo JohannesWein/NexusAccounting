@@ -10,6 +10,7 @@ import { loadFleetTemplates } from './fleets.js';
 import { applySort, attachSortable, clearAvailStrip, confirmDialog, fmtCountdown, fuelEstimate, makeMissionBar, rememberSelection, rememberedSelections, renderAvailStrip, store, activeUniverse } from '../common.js';
 
 let inited = false;
+let initedUniverse = null;
 let scPlanets = [];          // [{ id, name, systemId, systemName }]
 let scSystems = {};          // systemId → { x, y, name, zone }
 let scTemplates = [];
@@ -89,16 +90,28 @@ function renderTransit() {
 }
 
 export async function initScoutingTab() {
-  if (inited) return;
-  inited = true;
+  const universe = activeUniverse || 's0';
+  if (inited && initedUniverse === universe) return;
+
   const status = document.getElementById('sc-progress');
   status.textContent = 'Loading…';
+
+  // Rebind state to the newly active universe.
+  initedUniverse = universe;
+  scSystems = {};
+  scPlanets = [];
+  scMissions = [];
+  scPending = [];
+  scReturning = [];
+  scInvestigating = new Set();
+  scJustSurveyed.clear();
+  scJustInvestigated.clear();
 
   const [planets, map] = await Promise.all([
     browser.runtime.sendMessage({ type: 'GET_PLANETS', universe: activeUniverse }),
     browser.runtime.sendMessage({ type: 'GET_GALAXY_MAP', universe: activeUniverse }),
   ]);
-  if (map.error) { status.textContent = `Error: ${map.error}`; inited = false; return; }
+  if (map.error) { status.textContent = `Error: ${map.error}`; return; }
   for (const s of (map.systems || [])) {
     scSystems[s.id] = { x: s.x, y: s.y, name: s.name, zone: s.securityZone || null };
   }
@@ -124,36 +137,40 @@ export async function initScoutingTab() {
   drawDebrisZoneToggles();
   await loadInvHistory();
   await refreshTemplates();
-  browser.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local') {
-      const u = activeUniverse;
-      const key = u ? `${u}:fleet_templates` : 'fleet_templates';
-      if (changes[key] || changes['fleet_templates']) refreshTemplates();
-    }
-  });
+  if (!inited) {
+    inited = true;
+    browser.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local') {
+        const u = activeUniverse;
+        const key = u ? `${u}:fleet_templates` : 'fleet_templates';
+        if (changes[key] || changes['fleet_templates']) refreshTemplates();
+      }
+    });
 
-  document.getElementById('sc-scan').addEventListener('click', launchScan);
-  document.getElementById('sc-refresh').addEventListener('click', loadActiveSurveys);
-  document.getElementById('sc-planet').addEventListener('change', e => { rememberSelection('sc-planet', e.target.value); renderSurveys(); computeDebrisFuel(); computeSalvageFuel(); updateAvail(); });
-  document.getElementById('sc-scan-template').addEventListener('change', e => rememberSelection('sc-scan-template', e.target.value));
-  document.getElementById('sc-inv-template').addEventListener('change', e => { rememberSelection('sc-inv-template', e.target.value); computeFuel(); });
-  document.getElementById('sc-debris-refresh').addEventListener('click', loadDebris);
-  document.getElementById('sc-debris-hidden').addEventListener('click', () => { scShowHidden = !scShowHidden; renderDebris(); });
-  document.getElementById('sc-debris-invonly').addEventListener('change', e => { scInvestigatedOnly = e.target.checked; renderDebris(); });
+    document.getElementById('sc-scan').addEventListener('click', launchScan);
+    document.getElementById('sc-refresh').addEventListener('click', loadActiveSurveys);
+    document.getElementById('sc-planet').addEventListener('change', e => { rememberSelection('sc-planet', e.target.value); renderSurveys(); computeDebrisFuel(); computeSalvageFuel(); updateAvail(); });
+    document.getElementById('sc-scan-template').addEventListener('change', e => rememberSelection('sc-scan-template', e.target.value));
+    document.getElementById('sc-inv-template').addEventListener('change', e => { rememberSelection('sc-inv-template', e.target.value); computeFuel(); });
+    document.getElementById('sc-debris-refresh').addEventListener('click', loadDebris);
+    document.getElementById('sc-debris-hidden').addEventListener('click', () => { scShowHidden = !scShowHidden; renderDebris(); });
+    document.getElementById('sc-debris-invonly').addEventListener('change', e => { scInvestigatedOnly = e.target.checked; renderDebris(); });
+    document.getElementById('sc-debris-nearest').addEventListener('change', e => { rememberSelection('sc-debris-nearest', e.target.checked); computeDebrisFuel(); });
+
+    // Tick the countdowns every second; refetch the list every 30s. Both only
+    // while the tab is visible.
+    setInterval(() => {
+      if (document.getElementById('scouting-content').style.display === 'none') return;
+      tickTimers();
+      for (const k in scTicks) for (const upd of scTicks[k]) upd();   // advance all progress bars
+      if (++scTick % 10 === 0) updateAvail();       // catch returning fleets
+      if (scTick % 30 === 0) { loadActiveSurveys(); loadDebris(); }
+    }, 1000);
+  }
+
   document.getElementById('sc-debris-nearest').checked = savedSel['sc-debris-nearest'] === true;
-  document.getElementById('sc-debris-nearest').addEventListener('change', e => { rememberSelection('sc-debris-nearest', e.target.checked); computeDebrisFuel(); });
   await loadCargoShips();
   updateAvail();
-
-  // Tick the countdowns every second; refetch the list every 30s. Both only
-  // while the tab is visible.
-  setInterval(() => {
-    if (document.getElementById('scouting-content').style.display === 'none') return;
-    tickTimers();
-    for (const k in scTicks) for (const upd of scTicks[k]) upd();   // advance all progress bars
-    if (++scTick % 10 === 0) updateAvail();       // catch returning fleets
-    if (scTick % 30 === 0) { loadActiveSurveys(); loadDebris(); }
-  }, 1000);
 
   status.textContent = '';
   loadActiveSurveys();
@@ -548,16 +565,23 @@ const scJustSalvaged = new Set();    // reportIds launched this session — keep
 const scSalvageSort = { key: 'total', dir: -1 };
 attachSortable('sc-salvage-head', scSalvageSort, () => renderSalvage());
 
+function scopedScoutingKey(key) {
+  return activeUniverse ? `${activeUniverse}:${key}` : key;
+}
+
 // Investigation history persists across sessions: survey reports rotate out, so
 // we accumulate investigated systemIds (→ report time) here. An entry drops when
 // debris there is collected, or once it's older than INV_HISTORY_TTL_MS.
 async function loadInvHistory() {
-  const { debris_inv_history } = await browser.storage.local.get('debris_inv_history');
-  scInvHistory = new Map(Object.entries(debris_inv_history || {}).map(([k, v]) => [Number(k), v]));
+  const key = scopedScoutingKey('debris_inv_history');
+  const raw = await browser.storage.local.get([key, 'debris_inv_history']);
+  const data = raw[key] || raw.debris_inv_history || {};
+  scInvHistory = new Map(Object.entries(data).map(([k, v]) => [Number(k), v]));
   if (pruneInvHistory()) saveInvHistory();
 }
 async function saveInvHistory() {
-  await browser.storage.local.set({ debris_inv_history: Object.fromEntries(scInvHistory) });
+  const key = scopedScoutingKey('debris_inv_history');
+  await browser.storage.local.set({ [key]: Object.fromEntries(scInvHistory) });
 }
 // Drop entries past the TTL. Returns true if anything was removed.
 function pruneInvHistory() {
@@ -571,22 +595,28 @@ function pruneInvHistory() {
 
 // Debris zone filter persists across sessions.
 async function loadDebrisZone() {
-  const { debris_zone_filter } = await browser.storage.local.get('debris_zone_filter');
+  const key = scopedScoutingKey('debris_zone_filter');
+  const raw = await browser.storage.local.get([key, 'debris_zone_filter']);
+  const debris_zone_filter = raw[key] || raw.debris_zone_filter;
   scDebrisZoneFilter.clear();
   for (const z of (debris_zone_filter || [])) scDebrisZoneFilter.add(z);
 }
 function saveDebrisZone() {
-  browser.storage.local.set({ debris_zone_filter: [...scDebrisZoneFilter] });
+  const key = scopedScoutingKey('debris_zone_filter');
+  browser.storage.local.set({ [key]: [...scDebrisZoneFilter] });
 }
 
 // Survey-target zone filter persists across sessions.
 async function loadSurveyZone() {
-  const { survey_zone_filter } = await browser.storage.local.get('survey_zone_filter');
+  const key = scopedScoutingKey('survey_zone_filter');
+  const raw = await browser.storage.local.get([key, 'survey_zone_filter']);
+  const survey_zone_filter = raw[key] || raw.survey_zone_filter;
   scZoneFilter.clear();
   for (const z of (survey_zone_filter || [])) scZoneFilter.add(z);
 }
 function saveSurveyZone() {
-  browser.storage.local.set({ survey_zone_filter: [...scZoneFilter] });
+  const key = scopedScoutingKey('survey_zone_filter');
+  browser.storage.local.set({ [key]: [...scZoneFilter] });
 }
 
 // Cargo haulers the user can pick to collect debris. Loaded from the shipyard
