@@ -406,7 +406,7 @@ async function launchRuinsSurvey() {
 
   status.textContent = `Launching survey to ${found.moon.name}…`;
   const res = await browser.runtime.sendMessage({
-    type: 'SEND_XENO_SURVEY', sourcePlanetId: planetId, targetMoonId: found.moon.id, ships: r.ships,, universe: activeUniverse });
+    type: 'SEND_XENO_SURVEY', sourcePlanetId: planetId, targetMoonId: found.moon.id, ships: r.ships, universe: activeUniverse });
   if (res.error) { status.textContent = `Launch failed: ${res.error}`; return; }
   status.textContent = `Fleet sent to ${found.moon.name} ✓`;
   updateAvail();

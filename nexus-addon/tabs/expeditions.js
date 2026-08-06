@@ -245,7 +245,7 @@ async function launchExpedition() {
 
   status.textContent = 'Launching…';
   const res = await browser.runtime.sendMessage({
-    type: 'SEND_EXPEDITION', sourcePlanetId: planetId, ships, zone, depth,, universe: activeUniverse });
+    type: 'SEND_EXPEDITION', sourcePlanetId: planetId, ships, zone, depth, universe: activeUniverse });
   if (res.error) { status.textContent = `Launch failed: ${res.error}`; return; }
   status.textContent = 'Expedition launched ✓';
   updateExpeditionAvail();

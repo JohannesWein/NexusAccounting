@@ -284,7 +284,7 @@ async function launchScan() {
 
   status.textContent = `Surveying ${target.name}…`;
   const res = await browser.runtime.sendMessage({
-    type: 'SEND_SURVEY', sourcePlanetId: planetId, targetSystemId: target.id, ships: r.ships,, universe: activeUniverse });
+    type: 'SEND_SURVEY', sourcePlanetId: planetId, targetSystemId: target.id, ships: r.ships, universe: activeUniverse });
   if (res.error) { status.textContent = `Survey failed: ${res.error}`; return; }
   scJustSurveyed.add(target.id);
   status.textContent = `Probe sent to ${target.name} ✓`;
@@ -508,7 +508,7 @@ async function investigate(report) {
 
   status.textContent = `Investigating ${report.systemName}…`;
   const res = await browser.runtime.sendMessage({
-    type: 'SEND_INVESTIGATE', sourcePlanetId: planetId, reportId: report.id, ships: r.ships,, universe: activeUniverse });
+    type: 'SEND_INVESTIGATE', sourcePlanetId: planetId, reportId: report.id, ships: r.ships, universe: activeUniverse });
   if (res.error) { status.textContent = `Investigate failed: ${res.error}`; return; }
   scJustInvestigated.add(report.systemId);
   scInvestigating.add(report.systemId);
@@ -895,7 +895,7 @@ async function collectDebris(field) {
 
   status.textContent = `Collecting at ${field.system}…`;
   const res = await browser.runtime.sendMessage({
-    type: 'COLLECT_DEBRIS', sourcePlanetId: planetId, debrisId: field.debrisId, ships,, universe: activeUniverse });
+    type: 'COLLECT_DEBRIS', sourcePlanetId: planetId, debrisId: field.debrisId, ships, universe: activeUniverse });
   if (res.error) { status.textContent = `Collect failed: ${res.error}`; return; }
   scJustCollected.add(field.debrisId);
   if (field.systemId != null) scCollecting.set(field.systemId, { field: { ...field }, seenRun: false });
@@ -1045,7 +1045,7 @@ async function collectSalvage(salvage) {
 
   status.textContent = `Collecting salvage at ${salvage.system}…`;
   const res = await browser.runtime.sendMessage({
-    type: 'COLLECT_SALVAGE', sourcePlanetId: planetId, reportId: salvage.reportId, ships,, universe: activeUniverse });
+    type: 'COLLECT_SALVAGE', sourcePlanetId: planetId, reportId: salvage.reportId, ships, universe: activeUniverse });
   if (res.error) { status.textContent = `Collect failed: ${res.error}`; return; }
   scJustSalvaged.add(salvage.reportId);
   status.textContent = `Fleet sent to ${salvage.system} ✓`;

@@ -495,7 +495,7 @@ async function sendMineMission(f) {
     sourcePlanetId: planetId,
     targetFieldId: f.fieldId,
     ships,
-    miningDuration: MINING_DURATION,, universe: activeUniverse });
+    miningDuration: MINING_DURATION, universe: activeUniverse });
   status.textContent = res.error ? `Send failed: ${res.error}` : `Fleet sent to ${f.name} ✓`;
   if (!res.error) {
     afMiningFieldIds.add(f.fieldId);   // optimistic — GET_MISSIONS can lag right after the send
@@ -617,6 +617,9 @@ export function renderAsteroids() {
   computeFuel();
   applyMissionMarkers();
 }
+
+// Mission markers are handled via afMiningFieldIds row highlighting above.
+function applyMissionMarkers() {}
 
 // Fill the Fuel Cost column: one fuel-estimate per visible row for the selected
 // template's ships, from the chosen planet. A generation guard discards results
