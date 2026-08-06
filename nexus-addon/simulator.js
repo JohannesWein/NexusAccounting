@@ -10,16 +10,9 @@ import {
 } from './simulator-intel.js';
 import './simulator-validate.js';   // side effect: wires the Validate button
 
-// Universe passed from dashboard via ?universe= param; falls back to first enabled in settings.
-function simUniverse() {
-  const param = new URLSearchParams(location.search).get('universe');
-  if (param) return param;
-  // Async fallback: read nx:settings if opened without param.
-  return browser.storage.local.get('nx:settings').then(raw => {
-    const universes = raw['nx:settings']?.universes || {};
-    return Object.entries(universes).find(([, cfg]) => cfg.enabled)?.[0] || 's0';
-  });
-}
+// Universe passed from dashboard via ?universe= param; cached once for the lifetime of this page.
+const _SIM_U = new URLSearchParams(location.search).get('universe') || 's0';
+function simUniverse() { return _SIM_U; }
 
 export function fmt(n) {
   return Math.round(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -314,10 +307,10 @@ function renderCostCards(elId, losses) {
 
 async function init() {
   const status = document.getElementById('sim-status');
-  const u = await simUniverse();
+  const u = simUniverse();
   const shipsKey = `${u}:ships`;
   const raw = await browser.storage.local.get([shipsKey, 'ships']);
-  const ships = raw[shipsKey] || raw['ships'];   // fallback to unscoped for backward compat
+  const ships = raw[shipsKey] || raw['ships'];
 
   const defs = Object.values(ships || {});
   if (!defs.length || defs.some(d => d.hp === undefined)) {

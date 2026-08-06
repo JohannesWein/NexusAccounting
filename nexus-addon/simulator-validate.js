@@ -36,7 +36,7 @@ document.getElementById('btn-validate').addEventListener('click', async function
   const summary = document.getElementById('validation-summary');
 
   try {
-    const u = await simUniverse();
+    const u = simUniverse();
     const key = `${u}:pirate_recent_reports`;
     const raw = await browser.storage.local.get([key, 'pirate_recent_reports']);
     const pirate_recent_reports = raw[key] || raw['pirate_recent_reports'];

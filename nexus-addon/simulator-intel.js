@@ -3,15 +3,9 @@
 import { shipDefs } from './engine.js';
 import { fmt, updateFleetStats } from './simulator.js';   // circular: both are functions, only called from handlers
 
-// Universe passed from dashboard via ?universe= param; falls back to first enabled in settings.
-function simUniverse() {
-  const param = new URLSearchParams(location.search).get('universe');
-  if (param) return param;
-  return browser.storage.local.get('nx:settings').then(raw => {
-    const universes = raw['nx:settings']?.universes || {};
-    return Object.entries(universes).find(([, cfg]) => cfg.enabled)?.[0] || 's0';
-  });
-}
+// Universe passed from dashboard via ?universe= param; cached once for the lifetime of this page.
+const _SIM_U = new URLSearchParams(location.search).get('universe') || 's0';
+function simUniverse() { return _SIM_U; }
 
 // ── System coordinates & distance ──────────────────────────────────────────
 
@@ -23,7 +17,7 @@ async function resolveSystemCoords(inputEl) {
   }
   const name = inputEl.value.trim();
   if (!name) return null;
-  const res = await browser.runtime.sendMessage({ type: 'GET_SYSTEM_COORDS', names: [name] });
+  const res = await browser.runtime.sendMessage({ type: 'GET_SYSTEM_COORDS', names: [name], universe: _SIM_U });
   const c = res[name];
   if (c) { inputEl.dataset.x = c.x; inputEl.dataset.y = c.y; }
   return c || null;
@@ -64,7 +58,7 @@ function coordInputHandler(inputEl) {
 
 async function populatePlanetPicker() {
   const sel = document.getElementById('fleet-planet');
-  const res = await browser.runtime.sendMessage({ type: 'GET_PLANETS' });
+  const res = await browser.runtime.sendMessage({ type: 'GET_PLANETS', universe: _SIM_U });
   if (res.error || !res.planets?.length) return;
   sel.textContent = '';
   const allOpt = document.createElement('option');
@@ -88,7 +82,7 @@ document.getElementById('btn-load-fleet').addEventListener('click', async functi
   try {
     const planetId = document.getElementById('fleet-planet').value;
     const classFilter = document.getElementById('fleet-class').value;
-    const res = await browser.runtime.sendMessage({ type: 'GET_FLEET', planetId });
+    const res = await browser.runtime.sendMessage({ type: 'GET_FLEET', planetId, universe: _SIM_U });
     if (res.error) {
       status.textContent = `Load fleet failed: ${res.error}`;
       return;
@@ -120,7 +114,7 @@ document.getElementById('btn-load-fleet').addEventListener('click', async functi
 
 async function fillTechLevels(side) {
   const status = document.getElementById('sim-status');
-  const u = await simUniverse();
+  const u = simUniverse();
   const resKey = `${u}:research`;
   const raw = await browser.storage.local.get([resKey, 'research']);
   const research = raw[resKey] || raw['research'];
@@ -166,7 +160,7 @@ function classifyDefenses(buildings) {
 let intelReports = [];
 
 async function loadIntelReports() {
-  const u = await simUniverse();
+  const u = simUniverse();
   const spyKey = `${u}:spy_reports`, campKey = `${u}:camp_scout_reports`;
   const raw = await browser.storage.local.get([spyKey, campKey, 'spy_reports', 'camp_scout_reports']);
   const spy_reports = raw[spyKey] || raw['spy_reports'];
@@ -222,7 +216,7 @@ document.getElementById('report-select').addEventListener('change', async functi
   document.getElementById('sim-status').textContent =
     `Defender filled from report: ${total} ships, ${defSummary}.`;
   if (r.target_system_id) {
-    const coords = await browser.runtime.sendMessage({ type: 'GET_SYSTEM_COORDS', ids: [r.target_system_id] });
+    const coords = await browser.runtime.sendMessage({ type: 'GET_SYSTEM_COORDS', ids: [r.target_system_id], universe: _SIM_U });
     const c = coords[r.target_system_id];
     const defInput = document.getElementById('def-system');
     defInput.value = c?.name || r.target_system_name || '';
