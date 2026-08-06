@@ -457,7 +457,22 @@ const PURGE_WARN_THRESHOLD = 10000;
 async function maybeWarnStorage() {
   const u = activeUniverse;
   const idxKey = u ? `${u}:archive_index` : 'archive_index';
-  const all = await browser.storage.local.get([idxKey,\n    ...(u ? ['recent_reports','pirate_recent_reports','mining_recent_reports','exp_recent_reports','xeno_recent_reports'].map(k => `${u}:${k}`) : [])\n  ]);\n  const idx = all[idxKey] || {};\n  const rr = k => all[u ? `${u}:${k}` : k] || [];\n  const total = (idx.survey?.count || rr('recent_reports').length) +\n    (idx.pirate?.count || rr('pirate_recent_reports').length) +\n    (idx.mining?.count || rr('mining_recent_reports').length) +\n    (idx.exp?.count || rr('exp_recent_reports').length) +\n    (idx.xeno?.count || rr('xeno_recent_reports').length);\n  if (total <= PURGE_WARN_THRESHOLD) return;\n  if (!await confirmDialog(`⚠ Large storage: ${total.toLocaleString()} reports kept.\\n\\n` +\n    'Purge old data and keep only the last 3 days?')) return;\n  await browser.runtime.sendMessage({ type: 'PURGE_OLD', days: 3, universe: u });\n  await loadAll(u);\n}
+  const reportKeys = u
+    ? ['recent_reports','pirate_recent_reports','mining_recent_reports','exp_recent_reports','xeno_recent_reports'].map(k => `${u}:${k}`)
+    : ['recent_reports','pirate_recent_reports','mining_recent_reports','exp_recent_reports','xeno_recent_reports'];
+  const all = await browser.storage.local.get([idxKey, ...reportKeys]);
+  const idx = all[idxKey] || {};
+  const rr = k => all[u ? `${u}:${k}` : k] || [];
+  const total = (idx.survey?.count || rr('recent_reports').length) +
+    (idx.pirate?.count || rr('pirate_recent_reports').length) +
+    (idx.mining?.count || rr('mining_recent_reports').length) +
+    (idx.exp?.count || rr('exp_recent_reports').length) +
+    (idx.xeno?.count || rr('xeno_recent_reports').length);
+  if (total <= PURGE_WARN_THRESHOLD) return;
+  if (!await confirmDialog(`⚠ Large storage: ${total.toLocaleString()} reports kept.\n\nPurge old data and keep only the last 3 days?`)) return;
+  await browser.runtime.sendMessage({ type: 'PURGE_OLD', days: 3, universe: u });
+  await loadAll(u);
+}
 
 positionControls();
 initUniverseBar().then(u => loadAll(u)).then(maybeWarnStorage);

@@ -2834,21 +2834,25 @@ const WATCHED_URLS = [
 // risks an extra (deduped) re-fetch — harmless.
 const refetchPending = new Set();
 
-browser.webRequest.onCompleted.addListener(
-  details => {
-    if (details.tabId === -1) return;
-    if (details.statusCode < 200 || details.statusCode >= 300) return;
-    const url = new URL(details.url);
-    const path = url.pathname;
-    const universe = url.hostname.split('.')[0] || DEFAULT_UNIVERSE;
-    const cacheKey = `${universe}:${path}`;
-    if (refetchPending.has(cacheKey)) return;
-    refetchPending.add(cacheKey);
-    setTimeout(() => refetchPending.delete(cacheKey), 3000);
-    refetchEndpoint(path, universe);
-  },
-  { urls: WATCHED_URLS }
-);
+// webRequest is available in Chrome MV3 service workers for observation (not blocking).
+// Guard in case the current browser/version does not support it.
+if (browser.webRequest?.onCompleted?.addListener) {
+  browser.webRequest.onCompleted.addListener(
+    details => {
+      if (details.tabId === -1) return;
+      if (details.statusCode < 200 || details.statusCode >= 300) return;
+      const url = new URL(details.url);
+      const path = url.pathname;
+      const universe = url.hostname.split('.')[0] || DEFAULT_UNIVERSE;
+      const cacheKey = `${universe}:${path}`;
+      if (refetchPending.has(cacheKey)) return;
+      refetchPending.add(cacheKey);
+      setTimeout(() => refetchPending.delete(cacheKey), 3000);
+      refetchEndpoint(path, universe);
+    },
+    { urls: WATCHED_URLS }
+  );
+}
 
 async function refetchEndpoint(path, universe = DEFAULT_UNIVERSE) {
   const token = await getToken(universe);
