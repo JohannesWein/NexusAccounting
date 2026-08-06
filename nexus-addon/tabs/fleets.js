@@ -1,4 +1,5 @@
 import { fmt, store, confirmDialog, escapeHtml, activeUniverse, storeKey } from '../common.js';
+let inited = false;
 let templates = [];          // [{ id, name, ships: { shipDefId: qty } }]
 let shipDefs = [];           // catalog: [{ shipDefId, name, shipClass, miningCargo, attack, ... }]
 let currentId = null;        // template open in the editor
