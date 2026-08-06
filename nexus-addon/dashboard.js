@@ -189,6 +189,41 @@ export function renderAll() {
   renderTable();
 }
 
+// Tabs that can never be hidden.
+const PROTECTED_TABS = new Set(['global', 'settings']);
+
+const TAB_LABELS = {
+  global: 'Global', surveys: 'Surveys', pirates: 'Pirates', mining: 'Mining',
+  battles: 'Battles', debris: 'Debris', expeditions: 'Expeditions', wormholes: 'Wormhole',
+  finder: 'Galaxy Scout', asteroids: 'Asteroids Fields', fleets: 'Fleet Templates',
+  scouting: 'Scouting', xeno: 'Xeno', market: 'Market', techtree: 'Tech Tree',
+  simulator: '⚔ Combat Simulator',
+};
+
+async function loadTabPrefs() {
+  const raw = await browser.storage.local.get('nx:tab_prefs');
+  return raw['nx:tab_prefs'] || { hidden: [] };
+}
+
+async function saveTabPrefs(prefs) {
+  await browser.storage.local.set({ 'nx:tab_prefs': prefs });
+}
+
+// Shows/hides tab buttons and switches away from a hidden tab if needed.
+async function applyTabPrefs() {
+  const prefs = await loadTabPrefs();
+  const hidden = new Set(prefs.hidden || []);
+  document.querySelectorAll('.tab[data-tab]').forEach(btn => {
+    const tab = btn.dataset.tab;
+    if (PROTECTED_TABS.has(tab)) return;
+    btn.style.display = hidden.has(tab) ? 'none' : '';
+  });
+  // If the currently active tab became hidden, switch to global.
+  if (hidden.has(activeTab)) {
+    document.querySelector('.tab[data-tab="global"]')?.click();
+  }
+}
+
 // ── Tabs ───────────────────────────────────────────────────────────────────
 
 export const TAB_CONTENT = {
@@ -486,6 +521,7 @@ async function maybeWarnStorage() {
 }
 
 positionControls();
+applyTabPrefs();
 initUniverseBar().then(u => {
   return loadAll(u);
 }).then(maybeWarnStorage);
@@ -633,6 +669,31 @@ export async function renderSettingsTab() {
       await initUniverseBar();
       await renderSettingsTab();
     });
+  }
+
+  // ── Tab visibility ────────────────────────────────────────────────────────
+  const tabSection = document.getElementById('settings-tab-visibility');
+  if (tabSection) {
+    tabSection.innerHTML = '';
+    const prefs = await loadTabPrefs();
+    const hidden = new Set(prefs.hidden || []);
+    for (const [tab, label] of Object.entries(TAB_LABELS)) {
+      const row = document.createElement('label');
+      row.style.cssText = 'display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:0.85rem; cursor:pointer;';
+      const chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.checked = !hidden.has(tab);
+      chk.addEventListener('change', async () => {
+        const p = await loadTabPrefs();
+        const h = new Set(p.hidden || []);
+        if (chk.checked) h.delete(tab); else h.add(tab);
+        p.hidden = [...h];
+        await saveTabPrefs(p);
+        await applyTabPrefs();
+      });
+      row.append(chk, document.createTextNode(label));
+      tabSection.appendChild(row);
+    }
   }
 }
 
