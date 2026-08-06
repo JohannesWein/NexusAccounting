@@ -200,25 +200,31 @@ const TAB_LABELS = {
   simulator: '⚔ Combat Simulator',
 };
 
-async function loadTabPrefs() {
+// Tab prefs stored as { s0: { hidden: [] }, nf: { hidden: ['xeno'] } } — per universe.
+async function loadTabPrefs(universe) {
+  const u = universe || activeUniverse || 's0';
   const raw = await browser.storage.local.get('nx:tab_prefs');
-  return raw['nx:tab_prefs'] || { hidden: [] };
+  const all = raw['nx:tab_prefs'] || {};
+  return all[u] || { hidden: [] };
 }
 
-async function saveTabPrefs(prefs) {
-  await browser.storage.local.set({ 'nx:tab_prefs': prefs });
+async function saveTabPrefs(prefs, universe) {
+  const u = universe || activeUniverse || 's0';
+  const raw = await browser.storage.local.get('nx:tab_prefs');
+  const all = raw['nx:tab_prefs'] || {};
+  all[u] = prefs;
+  await browser.storage.local.set({ 'nx:tab_prefs': all });
 }
 
-// Shows/hides tab buttons and switches away from a hidden tab if needed.
-async function applyTabPrefs() {
-  const prefs = await loadTabPrefs();
+// Shows/hides tab buttons for the active universe; switches away from a hidden tab if needed.
+async function applyTabPrefs(universe) {
+  const prefs = await loadTabPrefs(universe);
   const hidden = new Set(prefs.hidden || []);
   document.querySelectorAll('.tab[data-tab]').forEach(btn => {
     const tab = btn.dataset.tab;
     if (PROTECTED_TABS.has(tab)) return;
     btn.style.display = hidden.has(tab) ? 'none' : '';
   });
-  // If the currently active tab became hidden, switch to global.
   if (hidden.has(activeTab)) {
     document.querySelector('.tab[data-tab="global"]')?.click();
   }
@@ -561,6 +567,7 @@ export async function initUniverseBar() {
         const iframe = document.getElementById('sim-iframe');
         if (iframe) iframe.src = browser.runtime.getURL(`simulator.html?universe=${encodeURIComponent(u)}`);
       }
+      applyTabPrefs(u);
       loadAll(u);
     });
     bar.appendChild(btn);
@@ -675,8 +682,15 @@ export async function renderSettingsTab() {
   const tabSection = document.getElementById('settings-tab-visibility');
   if (tabSection) {
     tabSection.innerHTML = '';
-    const prefs = await loadTabPrefs();
+    const u = activeUniverse;
+    const prefs = await loadTabPrefs(u);
     const hidden = new Set(prefs.hidden || []);
+    if (u) {
+      const hint = document.createElement('p');
+      hint.style.cssText = 'font-size:0.75rem; color:#8b949e; margin-bottom:8px;';
+      hint.textContent = `Showing settings for universe: ${u.toUpperCase()}`;
+      tabSection.appendChild(hint);
+    }
     for (const [tab, label] of Object.entries(TAB_LABELS)) {
       const row = document.createElement('label');
       row.style.cssText = 'display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:0.85rem; cursor:pointer;';
@@ -684,12 +698,12 @@ export async function renderSettingsTab() {
       chk.type = 'checkbox';
       chk.checked = !hidden.has(tab);
       chk.addEventListener('change', async () => {
-        const p = await loadTabPrefs();
+        const p = await loadTabPrefs(u);
         const h = new Set(p.hidden || []);
         if (chk.checked) h.delete(tab); else h.add(tab);
         p.hidden = [...h];
-        await saveTabPrefs(p);
-        await applyTabPrefs();
+        await saveTabPrefs(p, u);
+        await applyTabPrefs(u);
       });
       row.append(chk, document.createTextNode(label));
       tabSection.appendChild(row);
