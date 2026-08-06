@@ -477,7 +477,12 @@ async function maybeWarnStorage() {
 }
 
 positionControls();
-initUniverseBar().then(u => loadAll(u)).then(maybeWarnStorage);
+initUniverseBar().then(u => {
+  // Keep Combat Simulator link in sync with the active universe.
+  const simLink = document.getElementById('sim-link');
+  if (simLink && u) simLink.href = `simulator.html?universe=${encodeURIComponent(u)}`;
+  return loadAll(u);
+}).then(maybeWarnStorage);
 maybeShowWhatsNew();
 
 // ── Universe bar ───────────────────────────────────────────────────────────
@@ -509,6 +514,8 @@ export async function initUniverseBar() {
     btn.addEventListener('click', () => {
       setActiveUniverse(u);
       document.querySelectorAll('.universe-tab').forEach(b => b.classList.toggle('active', b.dataset.universe === u));
+      const simLink = document.getElementById('sim-link');
+      if (simLink) simLink.href = `simulator.html?universe=${encodeURIComponent(u)}`;
       loadAll(u);
     });
     bar.appendChild(btn);

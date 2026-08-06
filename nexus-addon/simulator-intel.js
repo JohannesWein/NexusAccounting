@@ -3,12 +3,14 @@
 import { shipDefs } from './engine.js';
 import { fmt, updateFleetStats } from './simulator.js';   // circular: both are functions, only called from handlers
 
-// Resolves the primary enabled universe; shared with simulator.js module graph.
-async function simUniverse() {
-  const raw = await browser.storage.local.get('nx:settings');
-  const universes = raw['nx:settings']?.universes || {};
-  const first = Object.entries(universes).find(([, cfg]) => cfg.enabled)?.[0];
-  return first || 's0';
+// Universe passed from dashboard via ?universe= param; falls back to first enabled in settings.
+function simUniverse() {
+  const param = new URLSearchParams(location.search).get('universe');
+  if (param) return param;
+  return browser.storage.local.get('nx:settings').then(raw => {
+    const universes = raw['nx:settings']?.universes || {};
+    return Object.entries(universes).find(([, cfg]) => cfg.enabled)?.[0] || 's0';
+  });
 }
 
 // ── System coordinates & distance ──────────────────────────────────────────

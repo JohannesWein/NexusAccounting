@@ -10,12 +10,15 @@ import {
 } from './simulator-intel.js';
 import './simulator-validate.js';   // side effect: wires the Validate button
 
-// Resolves the primary enabled universe from settings; defaults to 's0'.
-async function simUniverse() {
-  const raw = await browser.storage.local.get('nx:settings');
-  const universes = raw['nx:settings']?.universes || {};
-  const first = Object.entries(universes).find(([, cfg]) => cfg.enabled)?.[0];
-  return first || 's0';
+// Universe passed from dashboard via ?universe= param; falls back to first enabled in settings.
+function simUniverse() {
+  const param = new URLSearchParams(location.search).get('universe');
+  if (param) return param;
+  // Async fallback: read nx:settings if opened without param.
+  return browser.storage.local.get('nx:settings').then(raw => {
+    const universes = raw['nx:settings']?.universes || {};
+    return Object.entries(universes).find(([, cfg]) => cfg.enabled)?.[0] || 's0';
+  });
 }
 
 export function fmt(n) {

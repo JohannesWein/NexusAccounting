@@ -3,12 +3,14 @@
 import { shipDefs, runSimulations } from './engine.js';
 import { makeStatCard } from './simulator.js';   // circular: function, used only in the handler
 
-// Resolves the primary enabled universe.
-async function simUniverse() {
-  const raw = await browser.storage.local.get('nx:settings');
-  const universes = raw['nx:settings']?.universes || {};
-  const first = Object.entries(universes).find(([, cfg]) => cfg.enabled)?.[0];
-  return first || 's0';
+// Universe passed from dashboard via ?universe= param; falls back to first enabled in settings.
+function simUniverse() {
+  const param = new URLSearchParams(location.search).get('universe');
+  if (param) return param;
+  return browser.storage.local.get('nx:settings').then(raw => {
+    const universes = raw['nx:settings']?.universes || {};
+    return Object.entries(universes).find(([, cfg]) => cfg.enabled)?.[0] || 's0';
+  });
 }
 
 // ── Engine validation against recorded raids ───────────────────────────────
