@@ -10,6 +10,14 @@ import {
 } from './simulator-intel.js';
 import './simulator-validate.js';   // side effect: wires the Validate button
 
+// Resolves the primary enabled universe from settings; defaults to 's0'.
+async function simUniverse() {
+  const raw = await browser.storage.local.get('nx:settings');
+  const universes = raw['nx:settings']?.universes || {};
+  const first = Object.entries(universes).find(([, cfg]) => cfg.enabled)?.[0];
+  return first || 's0';
+}
+
 export function fmt(n) {
   return Math.round(n).toLocaleString(undefined, { maximumFractionDigits: 0 });
 }
@@ -303,7 +311,10 @@ function renderCostCards(elId, losses) {
 
 async function init() {
   const status = document.getElementById('sim-status');
-  const { ships } = await browser.storage.local.get('ships');
+  const u = await simUniverse();
+  const shipsKey = `${u}:ships`;
+  const raw = await browser.storage.local.get([shipsKey, 'ships']);
+  const ships = raw[shipsKey] || raw['ships'];   // fallback to unscoped for backward compat
 
   const defs = Object.values(ships || {});
   if (!defs.length || defs.some(d => d.hp === undefined)) {

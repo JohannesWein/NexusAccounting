@@ -3,6 +3,14 @@
 import { shipDefs } from './engine.js';
 import { fmt, updateFleetStats } from './simulator.js';   // circular: both are functions, only called from handlers
 
+// Resolves the primary enabled universe; shared with simulator.js module graph.
+async function simUniverse() {
+  const raw = await browser.storage.local.get('nx:settings');
+  const universes = raw['nx:settings']?.universes || {};
+  const first = Object.entries(universes).find(([, cfg]) => cfg.enabled)?.[0];
+  return first || 's0';
+}
+
 // ── System coordinates & distance ──────────────────────────────────────────
 
 // Resolve a system name input to {x, y}. Uses cached dataset coords if already
@@ -110,7 +118,10 @@ document.getElementById('btn-load-fleet').addEventListener('click', async functi
 
 async function fillTechLevels(side) {
   const status = document.getElementById('sim-status');
-  const { research } = await browser.storage.local.get('research');
+  const u = await simUniverse();
+  const resKey = `${u}:research`;
+  const raw = await browser.storage.local.get([resKey, 'research']);
+  const research = raw[resKey] || raw['research'];
   if (!research?.length) {
     status.textContent = 'No research data — open the game and click Scrape Now first.';
     return;
@@ -153,8 +164,11 @@ function classifyDefenses(buildings) {
 let intelReports = [];
 
 async function loadIntelReports() {
-  const { spy_reports, camp_scout_reports } =
-    await browser.storage.local.get(['spy_reports', 'camp_scout_reports']);
+  const u = await simUniverse();
+  const spyKey = `${u}:spy_reports`, campKey = `${u}:camp_scout_reports`;
+  const raw = await browser.storage.local.get([spyKey, campKey, 'spy_reports', 'camp_scout_reports']);
+  const spy_reports = raw[spyKey] || raw['spy_reports'];
+  const camp_scout_reports = raw[campKey] || raw['camp_scout_reports'];
   intelReports = [];
   for (const r of (camp_scout_reports || [])) {
     if (!r.fleet?.length) continue;

@@ -3,6 +3,14 @@
 import { shipDefs, runSimulations } from './engine.js';
 import { makeStatCard } from './simulator.js';   // circular: function, used only in the handler
 
+// Resolves the primary enabled universe.
+async function simUniverse() {
+  const raw = await browser.storage.local.get('nx:settings');
+  const universes = raw['nx:settings']?.universes || {};
+  const first = Object.entries(universes).find(([, cfg]) => cfg.enabled)?.[0];
+  return first || 's0';
+}
+
 // ── Engine validation against recorded raids ───────────────────────────────
 
 const VALIDATE_OPTS = { sims: 200, maxRounds: 10, variance: 0.1, debrisRate: 0.3, shieldRegen: false };
@@ -26,7 +34,10 @@ document.getElementById('btn-validate').addEventListener('click', async function
   const summary = document.getElementById('validation-summary');
 
   try {
-    const { pirate_recent_reports } = await browser.storage.local.get('pirate_recent_reports');
+    const u = await simUniverse();
+    const key = `${u}:pirate_recent_reports`;
+    const raw = await browser.storage.local.get([key, 'pirate_recent_reports']);
+    const pirate_recent_reports = raw[key] || raw['pirate_recent_reports'];
     const replayable = (pirate_recent_reports || [])
       .filter(r => r.attacker_fleet?.length && r.pirate_fleet?.length)
       .slice(0, 50);
