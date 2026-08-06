@@ -1,12 +1,4 @@
-// Fleets tab: named fleet templates, reusable by any task (mining a field,
-// collecting gas, future jobs). A template is planet-agnostic — ship quantities
-// keyed by shipDefId. Stored under `fleet_templates`.
-//
-// Templates can be tagged as escort for specific zones via `escortZones: string[]`
-// (values: 'sentinel', 'open', 'dead', 'rift'). The fleet editor uses these to
-// show per-template coloured buttons for escort optimisation.
-
-let inited = false;
+import { fmt, store, confirmDialog, escapeHtml, activeUniverse, storeKey } from '../common.js';
 let templates = [];          // [{ id, name, ships: { shipDefId: qty } }]
 let shipDefs = [];           // catalog: [{ shipDefId, name, shipClass, miningCargo, attack, ... }]
 let currentId = null;        // template open in the editor
@@ -37,19 +29,25 @@ function statText(s) {
 // Exported so other tabs (Asteroids) read the same list without duplicating
 // the storage key or migration.
 export async function loadFleetTemplates() {
-  const { fleet_templates, mining_template } =
-    await browser.storage.local.get(['fleet_templates', 'mining_template']);
+  const u = activeUniverse;
+  const ftKey = u ? storeKey(u, 'fleet_templates') : 'fleet_templates';
+  const mtKey = u ? storeKey(u, 'mining_template') : 'mining_template';
+  const raw = await browser.storage.local.get([ftKey, mtKey]);
+  const fleet_templates = raw[ftKey];
+  const mining_template = raw[mtKey];
   if (fleet_templates && fleet_templates.length) return fleet_templates;
   if (mining_template && Object.keys(mining_template.ships || {}).length) {
     const seeded = [{ id: Date.now(), name: 'Mining', ships: mining_template.ships }];
-    await browser.storage.local.set({ fleet_templates: seeded });
+    await browser.storage.local.set({ [ftKey]: seeded });
     return seeded;
   }
   return [];
 }
 
 async function save() {
-  await browser.storage.local.set({ fleet_templates: templates });
+  const u = activeUniverse;
+  const key = u ? storeKey(u, 'fleet_templates') : 'fleet_templates';
+  await browser.storage.local.set({ [key]: templates });
 }
 
 // Mining-ship colour legend (built once).

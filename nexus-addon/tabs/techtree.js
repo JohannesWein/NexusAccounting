@@ -1,6 +1,6 @@
 // Tech Tree tab — research from /api/research, laid out as a dependency graph.
 
-import { fmt, store, confirmDialog, escapeHtml } from '../common.js';
+import { fmt, store, confirmDialog, escapeHtml, activeUniverse, storeKey } from '../common.js';
 import { loadAll } from '../dashboard.js';
 
 export const BRANCH_ORDER = ['military', 'science', 'economy'];
@@ -24,18 +24,24 @@ export let ttResources = null;   // { ore, silicates, …, oreRate, … } or { e
 // ── Research queue planner ──────────────────────────────────────────────────
 export function techByKey(key) { return ttResearch.find(t => t.key === key); }
 
-export function saveTargets() { browser.storage.local.set({ tt_queue_targets: ttTargets }); }
+export function saveTargets() {
+  const u = activeUniverse;
+  const key = u ? storeKey(u, 'tt_queue_targets') : 'tt_queue_targets';
+  browser.storage.local.set({ [key]: ttTargets });
+}
 
 export async function loadTargets() {
-  const { tt_queue_targets } = await browser.storage.local.get('tt_queue_targets');
-  ttTargets = Array.isArray(tt_queue_targets) ? tt_queue_targets : [];
+  const u = activeUniverse;
+  const key = u ? storeKey(u, 'tt_queue_targets') : 'tt_queue_targets';
+  const raw = await browser.storage.local.get(key);
+  ttTargets = Array.isArray(raw[key]) ? raw[key] : [];
   ttTargetsLoaded = true;
   renderQueue();
   updateQueueBadges();
 }
 
 export async function fetchResources() {
-  const res = await browser.runtime.sendMessage({ type: 'GET_RESOURCES' });
+  const res = await browser.runtime.sendMessage({ type: 'GET_RESOURCES', universe: activeUniverse });
   ttResources = res;
   renderQueue();
 }

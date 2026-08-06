@@ -36,6 +36,8 @@ const GUIDE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="1
   <path d="M12 7v14"></path><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"></path></svg>`;
 
 function buildSection() {
+  // Only inject into actual game pages that have the sidebar nav.
+  if (!document.querySelector('nav.sidebar-nav, .sidebar-nav')) return null;
   const section = document.createElement('div');
   section.className = 'sidebar-section';
   section.id = 'nexus-addon-section';
@@ -155,7 +157,9 @@ function inject() {
   if (document.getElementById('nexus-addon-section')) return;   // already there
   const nav = document.querySelector('nav.sidebar-nav');
   if (!nav) return;
-  nav.appendChild(buildSection());
+  const section = buildSection();
+  if (!section) return;
+  nav.appendChild(section);
 }
 
 inject();

@@ -35,8 +35,9 @@
       richness: f.richness, type: f.fieldType,
     }));
     if (!fields.length) return;
+    const universe = window.location.hostname.split('.')[0];
     for (const f of fields) buffer.set(f.id, f);
-    window.postMessage({ __nxFields: fields }, window.location.origin);
+    window.postMessage({ __nxFields: fields, universe }, window.location.origin);
   }
 
   // Replay the whole buffer when the content script (re)initializes.

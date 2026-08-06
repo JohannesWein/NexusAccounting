@@ -8,6 +8,10 @@
 <body>
   <h1>Nexus Accounting</h1>
 
+  <div id="universe-bar">
+    <span id="universe-bar-hint">No universe configured — open Settings to enable one.</span>
+  </div>
+
   <nav class="tabs">
     <button class="tab active" data-tab="global">Global</button>
     <button class="tab" data-tab="surveys">Surveys</button>
@@ -24,6 +28,7 @@
     <button class="tab" data-tab="xeno">Xeno</button>
     <button class="tab" data-tab="market">Market</button>
     <button class="tab" data-tab="techtree">Tech Tree</button>
+    <button class="tab" data-tab="settings" style="margin-left:auto; color:#8b949e;">⚙ Settings</button>
   </nav>
 
   <div class="status-bar">
@@ -1014,6 +1019,27 @@
         <button id="tt-queue-clear" style="display:none;">Clear queue</button>
       </aside>
     </div>
+  </div>
+
+  <!-- Settings tab content -->
+  <div id="settings-content" style="display:none; max-width:700px;">
+    <div class="section-label">Universes</div>
+    <div id="settings-universes" style="margin-bottom:24px;"></div>
+
+    <div class="section-label">Add Universe</div>
+    <div style="display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap;">
+      <input id="settings-add-subdomain" type="text" placeholder="Subdomain (e.g. s1)"
+        style="width:130px; background:#21262d; border:1px solid #30363d; color:#e6edf3; padding:5px 10px; border-radius:6px; font-size:0.85rem;" />
+      <input id="settings-add-label" type="text" placeholder="Label (e.g. Server 1)"
+        style="width:150px; background:#21262d; border:1px solid #30363d; color:#e6edf3; padding:5px 10px; border-radius:6px; font-size:0.85rem;" />
+      <input id="settings-add-color" type="color" value="#58a6ff"
+        style="width:44px; height:32px; background:#21262d; border:1px solid #30363d; border-radius:6px; cursor:pointer; padding:2px;" />
+      <button id="btn-settings-add"
+        style="background:#238636; border:1px solid #2ea043; color:#fff; padding:5px 14px; border-radius:6px; cursor:pointer; font-size:0.85rem;">
+        Add
+      </button>
+    </div>
+    <p style="margin-top:8px; font-size:0.75rem; color:#8b949e;">New universes are available immediately — no extension update required.</p>
   </div>
 
   <div id="storage-footer" style="margin-top:24px; padding-top:10px; border-top:1px solid #21262d;

@@ -7,6 +7,16 @@ export function setStore(s) { store = s; }   // setter: other modules can't reas
 export let activeTab = 'global';
 export function setActiveTab(t) { activeTab = t; }
 
+// Active universe (subdomain, e.g. 's0' or 'nf'). Set by dashboard.js on init.
+export let activeUniverse = null;
+export function setActiveUniverse(u) { activeUniverse = u; }
+
+// Returns the storage key scoped to a universe: 's0:totals', 'nf:fleets', …
+export function storeKey(universe, key) { return `${universe}:${key}`; }
+
+// Extracts the universe subdomain from a hostname string.
+export function universeKey(hostname) { return (hostname || '').split('.')[0] || 's0'; }
+
 export const PER_PAGE = 20;
 
 // shipDefId → def ({ name, imageUrl, … }), fetched once and cached.

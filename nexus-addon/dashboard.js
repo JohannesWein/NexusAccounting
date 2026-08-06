@@ -4,7 +4,7 @@
 
 // ── Storage ────────────────────────────────────────────────────────────────
 
-import { activeTab, confirmDialog, dayKey, fuelForMode, getLabelKey, getMode, infoDialog, periodLabelFor, renderMarkdown, renderNetCards, setActiveTab, setStore, store } from './common.js';
+import { activeTab, activeUniverse, confirmDialog, dayKey, fuelForMode, getLabelKey, getMode, infoDialog, periodLabelFor, renderMarkdown, renderNetCards, setActiveTab, setActiveUniverse, setStore, store, storeKey } from './common.js';
 import { renderBattlesTab } from './tabs/battles.js';
 import { renderDebrisTab } from './tabs/debris.js';
 import { renderExpeditionsTab, setExpPage } from './tabs/expeditions.js';
@@ -21,25 +21,44 @@ import { renderPiratesTab, setPirateCurrentPage } from './tabs/pirates.js';
 import { getEventBreakdownForMode, getResourcesLostForMode, getSeriesForMode, getTotalsForMode, populateEventOptions, renderByEventChart, renderCollected, renderEventsChart, renderLost, renderResourceChart, renderTable, setCurrentPage } from './tabs/surveys.js';
 import { renderTechTreeTab } from './tabs/techtree.js';
 
-export async function loadAll() {
-  setStore(await browser.storage.local.get([
-    'totals', 'daily', 'hourly', 'resources_lost', 'event_breakdown',
-    'recent_reports', 'ships', 'last_scrape', 'last_error', 'records_cap',
-    'pirate_totals', 'pirate_daily', 'pirate_resources_lost',
-    'pirate_outcomes', 'pirate_debris_total', 'pirate_recent_reports',
-    'mining_totals', 'mining_daily', 'mining_resources_lost', 'mining_recent_reports',
-    'debris_fields', 'debris_last_check',
-    'debris_collected', 'debris_active_runs', 'debris_collection_log', 'debris_resources_lost',
-    'exp_totals', 'expedition_totals', 'wormhole_totals', 'exp_daily', 'exp_recent_reports',
-    'expedition_resources_lost', 'wormhole_resources_lost', 'stats_drift',
-    'xeno_totals', 'xeno_daily', 'xeno_recent_reports', 'xeno_resources_lost',
-    'pvp_recent_reports',
-    'research', 'research_speed_mult', 'active_research', 'fuel_log',
-  ]));
+// All data keys loaded from storage per scrape run.
+const UNIVERSE_STORE_KEYS = [
+  'totals', 'daily', 'hourly', 'resources_lost', 'event_breakdown',
+  'recent_reports', 'ships', 'last_scrape', 'last_error', 'records_cap',
+  'pirate_totals', 'pirate_daily', 'pirate_resources_lost',
+  'pirate_outcomes', 'pirate_debris_total', 'pirate_recent_reports',
+  'mining_totals', 'mining_daily', 'mining_resources_lost', 'mining_recent_reports',
+  'debris_fields', 'debris_last_check',
+  'debris_collected', 'debris_active_runs', 'debris_collection_log', 'debris_resources_lost',
+  'exp_totals', 'expedition_totals', 'wormhole_totals', 'exp_daily', 'exp_recent_reports',
+  'expedition_resources_lost', 'wormhole_resources_lost', 'stats_drift',
+  'xeno_totals', 'xeno_daily', 'xeno_recent_reports', 'xeno_resources_lost',
+  'pvp_recent_reports',
+  'research', 'research_speed_mult', 'active_research', 'fuel_log',
+  'fleet_templates', 'tt_queue_targets', 'live_search',
+];
 
-  const cap = store.records_cap ?? 5000;
+export async function loadAll(universe) {
+  const u = universe || activeUniverse;
+  let raw;
+  if (u) {
+    // Fetch all keys with universe prefix, then strip prefix for the store.
+    const scopedKeys = UNIVERSE_STORE_KEYS.map(k => storeKey(u, k));
+    const scopedRaw = await browser.storage.local.get(scopedKeys);
+    const unscoped = {};
+    for (const k of UNIVERSE_STORE_KEYS) unscoped[k] = scopedRaw[storeKey(u, k)];
+    // Add global keys (no universe prefix).
+    const globalRaw = await browser.storage.local.get(['records_cap']);
+    if (unscoped.records_cap == null) unscoped.records_cap = globalRaw.records_cap;
+    raw = unscoped;
+  } else {
+    // No universe configured yet — load with unscoped keys as fallback.
+    raw = await browser.storage.local.get(UNIVERSE_STORE_KEYS);
+  }
+  setStore(raw);
+  const cap = raw.records_cap ?? 5000;
   document.getElementById('records-cap').value = cap === Infinity ? 0 : cap;
-  updateStatus(store.last_scrape, store.last_error);
+  updateStatus(raw.last_scrape, raw.last_error);
   renderAll();
   updateStorageFooter();
 }
@@ -145,6 +164,10 @@ export function renderAll() {
     renderTechTreeTab();
     return;
   }
+  if (activeTab === 'settings') {
+    renderSettingsTab();
+    return;
+  }
   populateEventOptions();
   const mode = getMode();
   const t = getTotalsForMode();
@@ -181,6 +204,7 @@ export const TAB_CONTENT = {
   xeno: 'xeno-content',
   market: 'market-content',
   techtree: 'techtree-content',
+  settings: 'settings-content',
 };
 
 document.querySelectorAll('.tab').forEach(btn => {
@@ -190,9 +214,9 @@ document.querySelectorAll('.tab').forEach(btn => {
     for (const [tab, id] of Object.entries(TAB_CONTENT)) {
       document.getElementById(id).style.display = tab === activeTab ? '' : 'none';
     }
-    // View mode and records cap are meaningless on the finder and debris tabs.
+    // View mode and records cap are meaningless on these tabs.
     document.getElementById('global-controls').style.display =
-      (activeTab === 'finder' || activeTab === 'asteroids' || activeTab === 'fleets' || activeTab === 'scouting' || activeTab === 'techtree' || activeTab === 'market' || activeTab === 'battles') ? 'none' : '';
+      (activeTab === 'finder' || activeTab === 'asteroids' || activeTab === 'fleets' || activeTab === 'scouting' || activeTab === 'techtree' || activeTab === 'market' || activeTab === 'battles' || activeTab === 'settings') ? 'none' : '';
     positionControls();
     renderAll();
   });
@@ -218,8 +242,8 @@ document.getElementById('btn-scrape').addEventListener('click', async function (
   this.disabled = true;
   this.textContent = 'Scraping…';
   try {
-    await browser.runtime.sendMessage({ type: 'SCRAPE_NOW' });
-    await loadAll();
+    await browser.runtime.sendMessage({ type: 'SCRAPE_NOW', universe: activeUniverse });
+    await loadAll(activeUniverse);
     this.textContent = 'Done ✓';
   } catch {
     this.textContent = 'Error';
@@ -265,7 +289,8 @@ document.getElementById('btn-reset').addEventListener('click', async function ()
   const { records_cap } = await browser.storage.local.get('records_cap');
   await browser.storage.local.clear();
   if (records_cap) await browser.storage.local.set({ records_cap });
-  await loadAll();
+  await initUniverseBar();
+  await loadAll(activeUniverse);
 });
 
 document.getElementById('records-cap').addEventListener('input', function () {
@@ -294,26 +319,24 @@ document.getElementById('btn-save-cap').addEventListener('click', async function
 // ── Rebuild aggregates ─────────────────────────────────────────────────────
 
 document.getElementById('btn-rebuild').addEventListener('click', async function () {
-  const s = await browser.storage.local.get([
-    'archive_index',
-    'recent_reports', 'pirate_recent_reports', 'mining_recent_reports', 'exp_recent_reports', 'xeno_recent_reports',
-  ]);
-  const idx = s.archive_index || {};
-  const n = (idx.survey?.count || (s.recent_reports || []).length) +
-            (idx.pirate?.count || (s.pirate_recent_reports || []).length) +
-            (idx.mining?.count || (s.mining_recent_reports || []).length) +
-            (idx.exp?.count || (s.exp_recent_reports || []).length) +
-            (idx.xeno?.count || (s.xeno_recent_reports || []).length);
+  const u = activeUniverse;
+  const idxKey = u ? `${u}:archive_index` : 'archive_index';
+  const rrKey = u ? `${u}:recent_reports` : 'recent_reports';
+  const s = await browser.storage.local.get([idxKey, rrKey,
+    ...(u ? ['pirate', 'mining', 'exp', 'xeno'].flatMap(t => [`${u}:${t}_recent_reports`]) : []
+    )]);
+  const idx = s[idxKey] || {};
+  const reports = (idx.survey?.count || (s[rrKey] || []).length);
   if (!confirm(
-    `Recompute all aggregated stats from the ${n} archived report records?\n\n` +
+    `Recompute all aggregated stats from the stored report records?\n\n` +
     'Mining alloys/rares, stolen-cargo breakdown and mining loss valuation ' +
     'cannot be reconstructed and will reset.')) return;
 
   this.disabled = true;
   this.textContent = 'Rebuilding…';
   try {
-    await browser.runtime.sendMessage({ type: 'REBUILD_AGGREGATES' });
-    await loadAll();
+    await browser.runtime.sendMessage({ type: 'REBUILD_AGGREGATES', universe: u });
+    await loadAll(u);
     this.textContent = 'Rebuilt ✓';
   } catch {
     this.textContent = 'Error';
@@ -325,19 +348,29 @@ document.getElementById('btn-rebuild').addEventListener('click', async function 
 // ── Export / Import ────────────────────────────────────────────────────────
 
 document.getElementById('btn-export').addEventListener('click', async function () {
-  const data = await browser.storage.local.get(null);
-  // JSON cannot represent Infinity (unlimited records cap) — store as 0.
+  const all = await browser.storage.local.get(null);
+  const u = activeUniverse;
+  // Filter to only keys for the active universe (prefix `u:`) plus global keys.
+  const data = {};
+  for (const [k, v] of Object.entries(all)) {
+    if (u && k.startsWith(`${u}:`)) {
+      data[k] = v;  // keep universe-scoped keys as-is
+    } else if (!k.includes(':')) {
+      data[k] = v;  // global keys (no colon prefix)
+    }
+  }
   if (data.records_cap === Infinity) data.records_cap = 0;
   const payload = {
     nexus_accounting_backup: 1,
     exported_at: new Date().toISOString(),
+    universe: u || null,
     data,
   };
   const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `nexus-accounting-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `nexus-accounting-backup-${u || 'all'}-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   this.textContent = 'Exported ✓';
@@ -393,14 +426,20 @@ document.getElementById('import-file').addEventListener('change', async function
     }
     validateBackupData(payload.data);
     const exportedAt = payload.exported_at ? new Date(payload.exported_at).toLocaleString() : 'unknown date';
-    if (!confirm(`Replace ALL current data with backup from ${exportedAt}?\n\nA snapshot of the current data is written to Downloads/NexusAccounting first.`)) return;
+    const exportedUniverse = payload.universe || null;
+    let confirmMsg = `Replace ALL current data with backup from ${exportedAt}?\n\nA snapshot of the current data is written to Downloads/NexusAccounting first.`;
+    if (exportedUniverse && exportedUniverse !== activeUniverse) {
+      confirmMsg = `⚠ This backup is from universe "${exportedUniverse}" but you are currently on "${activeUniverse}".\n\n` + confirmMsg;
+    }
+    if (!confirm(confirmMsg)) return;
 
     await browser.runtime.sendMessage({ type: 'BACKUP_NOW', reason: 'pre-import' });
     const data = payload.data;
     if (data.records_cap === 0) data.records_cap = Infinity;
     await browser.storage.local.clear();
     await browser.storage.local.set(data);
-    await loadAll();
+    await initUniverseBar();
+    await loadAll(activeUniverse);
     btn.textContent = 'Imported ✓';
   } catch (e) {
     alert(`Import failed: ${e.message}`);
@@ -416,25 +455,153 @@ document.getElementById('import-file').addEventListener('change', async function
 // down to the last 3 days. Runs once (not on every scrape-driven reload).
 const PURGE_WARN_THRESHOLD = 10000;
 async function maybeWarnStorage() {
-  const all = await browser.storage.local.get([
-    'archive_index', 'recent_reports', 'pirate_recent_reports', 'mining_recent_reports', 'exp_recent_reports', 'xeno_recent_reports',
-  ]);
-  const idx = all.archive_index || {};
-  const total = (idx.survey?.count || all.recent_reports?.length || 0) +
-    (idx.pirate?.count || all.pirate_recent_reports?.length || 0) +
-    (idx.mining?.count || all.mining_recent_reports?.length || 0) +
-    (idx.exp?.count || all.exp_recent_reports?.length || 0) +
-    (idx.xeno?.count || all.xeno_recent_reports?.length || 0);
-  if (total <= PURGE_WARN_THRESHOLD) return;
-  if (!await confirmDialog(`⚠ Large storage: ${total.toLocaleString()} reports kept.\n\n` +
-    'Purge old data and keep only the last 3 days?')) return;
-  await browser.runtime.sendMessage({ type: 'PURGE_OLD', days: 3 });
-  await loadAll();
-}
+  const u = activeUniverse;
+  const idxKey = u ? `${u}:archive_index` : 'archive_index';
+  const all = await browser.storage.local.get([idxKey,\n    ...(u ? ['recent_reports','pirate_recent_reports','mining_recent_reports','exp_recent_reports','xeno_recent_reports'].map(k => `${u}:${k}`) : [])\n  ]);\n  const idx = all[idxKey] || {};\n  const rr = k => all[u ? `${u}:${k}` : k] || [];\n  const total = (idx.survey?.count || rr('recent_reports').length) +\n    (idx.pirate?.count || rr('pirate_recent_reports').length) +\n    (idx.mining?.count || rr('mining_recent_reports').length) +\n    (idx.exp?.count || rr('exp_recent_reports').length) +\n    (idx.xeno?.count || rr('xeno_recent_reports').length);\n  if (total <= PURGE_WARN_THRESHOLD) return;\n  if (!await confirmDialog(`⚠ Large storage: ${total.toLocaleString()} reports kept.\\n\\n` +\n    'Purge old data and keep only the last 3 days?')) return;\n  await browser.runtime.sendMessage({ type: 'PURGE_OLD', days: 3, universe: u });\n  await loadAll(u);\n}
 
 positionControls();
-loadAll().then(maybeWarnStorage);
+initUniverseBar().then(u => loadAll(u)).then(maybeWarnStorage);
 maybeShowWhatsNew();
+
+// ── Universe bar ───────────────────────────────────────────────────────────
+
+// Reads nx:settings, renders universe tab buttons, sets activeUniverse.
+// Returns the active universe string (or null).
+export async function initUniverseBar() {
+  const settings = await browser.runtime.sendMessage({ type: 'GET_NX_SETTINGS' }) || {};
+  const universes = settings.universes || {};
+  const enabled = Object.entries(universes).filter(([, cfg]) => cfg.enabled);
+
+  const bar = document.getElementById('universe-bar');
+  bar.innerHTML = '';
+
+  if (!enabled.length) {
+    bar.innerHTML = '<span id="universe-bar-hint" style="font-size:0.75rem;color:#484f58;">No universe enabled — open ⚙ Settings to configure.</span>';
+    setActiveUniverse(null);
+    return null;
+  }
+
+  let firstUniverse = null;
+  for (const [u, cfg] of enabled) {
+    if (!firstUniverse) firstUniverse = u;
+    const btn = document.createElement('button');
+    btn.className = 'universe-tab' + (u === activeUniverse ? ' active' : '');
+    btn.style.setProperty('--u-color', cfg.color || '#56d364');
+    btn.dataset.universe = u;
+    btn.innerHTML = `<span class="universe-dot"></span>${cfg.label || u.toUpperCase()}`;
+    btn.addEventListener('click', () => {
+      setActiveUniverse(u);
+      document.querySelectorAll('.universe-tab').forEach(b => b.classList.toggle('active', b.dataset.universe === u));
+      loadAll(u);
+    });
+    bar.appendChild(btn);
+  }
+
+  // Set active universe to the first enabled one if not already set.
+  const toActivate = (activeUniverse && universes[activeUniverse]?.enabled) ? activeUniverse : firstUniverse;
+  setActiveUniverse(toActivate);
+  document.querySelectorAll('.universe-tab').forEach(b => b.classList.toggle('active', b.dataset.universe === toActivate));
+  return toActivate;
+}
+
+// ── Settings tab ────────────────────────────────────────────────────────────
+
+export async function renderSettingsTab() {
+  const settings = await browser.runtime.sendMessage({ type: 'GET_NX_SETTINGS' }) || {};
+  const universes = settings.universes || {};
+  const container = document.getElementById('settings-universes');
+  container.innerHTML = '';
+
+  if (!Object.keys(universes).length) {
+    container.innerHTML = '<p style="color:#8b949e;font-size:0.85rem;">No universes configured yet.</p>';
+  }
+
+  for (const [u, cfg] of Object.entries(universes)) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap;';
+
+    const chk = document.createElement('input');
+    chk.type = 'checkbox'; chk.checked = !!cfg.enabled; chk.title = 'Enable this universe';
+    chk.addEventListener('change', async () => {
+      const s = await browser.runtime.sendMessage({ type: 'GET_NX_SETTINGS' }) || {};
+      if (!s.universes) s.universes = {};
+      if (!s.universes[u]) s.universes[u] = {};
+      s.universes[u].enabled = chk.checked;
+      await browser.runtime.sendMessage({ type: 'SET_NX_SETTINGS', settings: s });
+      await initUniverseBar();
+    });
+
+    const subdomain = document.createElement('code');
+    subdomain.textContent = u;
+    subdomain.style.cssText = 'background:#161b22; border:1px solid #30363d; padding:2px 8px; border-radius:4px; font-size:0.85rem; color:#58a6ff;';
+
+    const labelInput = document.createElement('input');
+    labelInput.type = 'text'; labelInput.value = cfg.label || ''; labelInput.placeholder = 'Label';
+    labelInput.style.cssText = 'width:130px; background:#21262d; border:1px solid #30363d; color:#e6edf3; padding:4px 8px; border-radius:6px; font-size:0.85rem;';
+    labelInput.addEventListener('change', async () => {
+      const s = await browser.runtime.sendMessage({ type: 'GET_NX_SETTINGS' }) || {};
+      s.universes[u].label = labelInput.value;
+      await browser.runtime.sendMessage({ type: 'SET_NX_SETTINGS', settings: s });
+      await initUniverseBar();
+    });
+
+    const colorInput = document.createElement('input');
+    colorInput.type = 'color'; colorInput.value = cfg.color || '#56d364';
+    colorInput.style.cssText = 'width:40px; height:30px; background:#21262d; border:1px solid #30363d; border-radius:6px; cursor:pointer; padding:2px;';
+    colorInput.addEventListener('change', async () => {
+      const s = await browser.runtime.sendMessage({ type: 'GET_NX_SETTINGS' }) || {};
+      s.universes[u].color = colorInput.value;
+      await browser.runtime.sendMessage({ type: 'SET_NX_SETTINGS', settings: s });
+      await initUniverseBar();
+    });
+
+    // Session detection badge
+    const sessionBadge = document.createElement('span');
+    sessionBadge.style.cssText = 'font-size:0.7rem; color:#8b949e;';
+    sessionBadge.textContent = '…';
+    browser.runtime.sendMessage({ type: 'CHECK_UNIVERSE_SESSION', universe: u })
+      .then(r => { sessionBadge.textContent = r?.hasSession ? '✓ Logged in' : '— No session'; sessionBadge.style.color = r?.hasSession ? '#56d364' : '#484f58'; })
+      .catch(() => {});
+
+    const resetBtn = document.createElement('button');
+    resetBtn.textContent = 'Reset data';
+    resetBtn.style.cssText = 'background:#21262d; border:1px solid #ff7b7244; color:#ff7b72; padding:3px 10px; border-radius:6px; cursor:pointer; font-size:0.75rem;';
+    resetBtn.addEventListener('click', async () => {
+      if (!await confirmDialog(`Delete ALL data for universe "${cfg.label || u}" (${u})?\n\nThis cannot be undone.`)) return;
+      // Remove all keys starting with `${u}:`
+      const all = await browser.storage.local.get(null);
+      const toRemove = Object.keys(all).filter(k => k.startsWith(`${u}:`));
+      if (toRemove.length) await browser.storage.local.remove(toRemove);
+      resetBtn.textContent = 'Deleted ✓';
+      setTimeout(() => { resetBtn.textContent = 'Reset data'; }, 2000);
+      if (activeUniverse === u) await loadAll(u);
+    });
+
+    row.append(chk, subdomain, labelInput, colorInput, sessionBadge, resetBtn);
+    container.appendChild(row);
+  }
+
+  // "Add Universe" button handler (wired once).
+  const addBtn = document.getElementById('btn-settings-add');
+  if (addBtn && !addBtn.dataset.bound) {
+    addBtn.dataset.bound = '1';
+    addBtn.addEventListener('click', async () => {
+      const sub = document.getElementById('settings-add-subdomain').value.trim().toLowerCase();
+      const label = document.getElementById('settings-add-label').value.trim();
+      const color = document.getElementById('settings-add-color').value;
+      if (!sub || !/^[a-z0-9-]+$/.test(sub)) { alert('Invalid subdomain.'); return; }
+      const s = await browser.runtime.sendMessage({ type: 'GET_NX_SETTINGS' }) || {};
+      if (!s.universes) s.universes = {};
+      if (s.universes[sub]) { alert(`Universe "${sub}" already exists.`); return; }
+      s.universes[sub] = { enabled: true, label: label || sub.toUpperCase(), color };
+      await browser.runtime.sendMessage({ type: 'SET_NX_SETTINGS', settings: s });
+      document.getElementById('settings-add-subdomain').value = '';
+      document.getElementById('settings-add-label').value = '';
+      await initUniverseBar();
+      await renderSettingsTab();
+    });
+  }
+}
 
 // Show the latest changelog section once after an update (flag set by the
 // background's onInstalled handler).
@@ -452,5 +619,10 @@ async function maybeShowWhatsNew() {
 }
 
 browser.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && (changes.last_scrape || changes.totals || changes.pirate_totals)) loadAll();
+  if (area !== 'local') return;
+  const u = activeUniverse;
+  const relevant = u
+    ? (changes[`${u}:last_scrape`] || changes[`${u}:totals`] || changes[`${u}:pirate_totals`])
+    : (changes.last_scrape || changes.totals || changes.pirate_totals);
+  if (relevant) loadAll(u);
 });

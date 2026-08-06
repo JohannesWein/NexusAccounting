@@ -2,6 +2,26 @@
 body { background: #0d1117; color: #e6edf3; font-family: system-ui, sans-serif; padding: 24px; }
 h1 { font-size: 1.4rem; margin-bottom: 4px; color: #58a6ff; }
 
+/* ── Universe bar ── */
+#universe-bar {
+  display: flex; gap: 6px; align-items: center; margin: 8px 0 4px;
+  min-height: 28px;
+}
+.universe-tab {
+  background: #161b22; border: 1px solid #30363d; border-radius: 14px;
+  color: #8b949e; padding: 3px 12px; cursor: pointer; font-size: 0.8rem;
+  display: flex; align-items: center; gap: 6px; transition: border-color 0.15s;
+}
+.universe-tab:hover { border-color: #58a6ff; color: #e6edf3; }
+.universe-tab.active { color: #e6edf3; border-color: var(--u-color, #58a6ff); }
+.universe-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--u-color, #56d364); flex-shrink: 0;
+}
+#universe-bar-hint {
+  font-size: 0.75rem; color: #484f58; margin-left: 4px;
+}
+
 .tabs { display: flex; gap: 4px; margin: 12px 0 16px; border-bottom: 1px solid #30363d; }
 .tab {
   background: none; border: none; border-bottom: 2px solid transparent;

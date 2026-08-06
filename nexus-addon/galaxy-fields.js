@@ -29,14 +29,16 @@ const SHIPS = {
 const EXCAVATOR_BONUS = 1.2;   // fleet yield bonus when an Excavator is present
 
 const fieldData = new Map();   // fieldId(string) -> { remaining, richness, type }
+const _universe = window.location.hostname.split('.')[0] || 's0';
+const _pfx = k => `${_universe}:${k}`;
 
 // Per-field, independent settings; unset fields use the base default.
 function currentCycles(id) {
-  const n = parseInt(localStorage.getItem('nx-mining-cycles-' + id), 10);
+  const n = parseInt(localStorage.getItem(_pfx('nx-mining-cycles-' + id)), 10);
   return n >= 1 && n <= MAX_CYCLES ? n : MAX_CYCLES;      // clamp 1..MAX_CYCLES
 }
 function excavatorOn(id) {
-  return localStorage.getItem('nx-excavator-' + id) === '1';
+  return localStorage.getItem(_pfx('nx-excavator-' + id)) === '1';
 }
 
 window.addEventListener('message', e => {
@@ -71,7 +73,7 @@ function buildPicker(card, id) {
   exc.type = 'checkbox';
   exc.className = 'nx-excavator';
   exc.addEventListener('change', () => {
-    localStorage.setItem('nx-excavator-' + id, exc.checked ? '1' : '0');
+    localStorage.setItem(_pfx('nx-excavator-' + id), exc.checked ? '1' : '0');
     paint(card);
   });
   excLabel.append(exc, document.createTextNode('Excavator +20%'));
@@ -91,7 +93,7 @@ function buildPicker(card, id) {
 
   const setCycles = n => {
     n = Math.min(MAX_CYCLES, Math.max(1, n));                // guard 1..MAX_CYCLES
-    localStorage.setItem('nx-mining-cycles-' + id, n);
+    localStorage.setItem(_pfx('nx-mining-cycles-' + id), n);
     paint(card);
   };
   minus.addEventListener('click', () => setCycles(currentCycles(id) - 1));
@@ -136,7 +138,7 @@ function paint(card) {
 }
 
 // User toggle (persisted) to hide/show the injected mining picker + optimal line.
-const MINING_VIS_KEY = 'nx-mining-visible';
+const MINING_VIS_KEY = _pfx('nx-mining-visible');
 const miningVisible = () => localStorage.getItem(MINING_VIS_KEY) !== '0';   // default on
 
 function applyMiningVisibility() {
