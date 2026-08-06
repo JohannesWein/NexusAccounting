@@ -33,8 +33,9 @@ export async function loadFleetTemplates() {
   const u = activeUniverse;
   const ftKey = u ? storeKey(u, 'fleet_templates') : 'fleet_templates';
   const mtKey = u ? storeKey(u, 'mining_template') : 'mining_template';
-  const raw = await browser.storage.local.get([ftKey, mtKey]);
-  const fleet_templates = raw[ftKey];
+  const raw = await browser.storage.local.get([ftKey, mtKey, 'fleet_templates']);
+  // Use scoped key; fall back to unscoped if migration hasn't run yet.
+  const fleet_templates = raw[ftKey] || raw['fleet_templates'];
   const mining_template = raw[mtKey];
   if (fleet_templates && fleet_templates.length) return fleet_templates;
   if (mining_template && Object.keys(mining_template.ships || {}).length) {
@@ -136,7 +137,6 @@ function fillEditor() {
   document.getElementById('ft-delete').disabled = !t;
   document.getElementById('ft-box-title').textContent = t ? (t.name || 'Fleet') : 'Fleet';
   fillShips();
-  fillEscortZones();
 }
 
 // Ship rows for the open template, grouped + styled like the simulator's

@@ -432,20 +432,18 @@ async function refreshTemplates() {
   const saved = await rememberedSelections();
   const want = saved['af-template-select'] || sel.value;   // survives tabs/sessions
   sel.textContent = '';
-  // Escort-tagged templates are not mining templates — exclude from dropdown.
-  const miningTemplates = afTemplates.filter(t => !(t.escortZones && t.escortZones.length));
-  if (!miningTemplates.length) {
+  if (!afTemplates.length) {
     const o = document.createElement('option');
     o.value = ''; o.textContent = '— none (create one in Fleets) —';
     sel.appendChild(o);
     return;
   }
-  for (const t of miningTemplates) {
+  for (const t of afTemplates) {
     const o = document.createElement('option');
     o.value = t.id; o.textContent = t.name;
     sel.appendChild(o);
   }
-  if (want && miningTemplates.some(t => String(t.id) === want)) sel.value = want;
+  if (want && afTemplates.some(t => String(t.id) === want)) sel.value = want;
 }
 
 // Open the editable fleet dialog seeded from the ship recommendation (falling
@@ -473,19 +471,13 @@ async function sendMineMission(f) {
   const exc = afAllShips.find(d => d.name === 'Excavator');
   const miningShipIds = new Set(afAllShips.filter(d => MINING_SHIPS.has(d.name)).map(d => d.shipDefId));
 
-  // Escort templates: fleet templates tagged for this field's zone.
-  const fieldZone = f.zone && f.zone !== '—' ? f.zone : null;
-  const escortTemplates = fieldZone
-    ? afTemplates.filter(t => (t.escortZones || []).includes(fieldZone))
-    : [];
-
   const ships = await editFleetDialog({
     title: `Mine ${f.name}`,
     subtitle: `To: ${f.name} (${f.system})\nFrom: ${planet ? planet.name : planetId}`,
     avail, seed, recShips, miningShipIds,
     excavatorShipDefId: exc ? exc.shipDefId : null,
     excavatorBonus: EXCAVATOR_BONUS,
-    escortTemplates,
+    escortTemplates: [],
   });
   if (!ships || !ships.length) return;   // cancelled or emptied
 

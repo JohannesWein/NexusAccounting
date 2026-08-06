@@ -125,7 +125,11 @@ export async function initScoutingTab() {
   await loadInvHistory();
   await refreshTemplates();
   browser.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes.fleet_templates) refreshTemplates();
+    if (area === 'local') {
+      const u = activeUniverse;
+      const key = u ? `${u}:fleet_templates` : 'fleet_templates';
+      if (changes[key] || changes['fleet_templates']) refreshTemplates();
+    }
   });
 
   document.getElementById('sc-scan').addEventListener('click', launchScan);
