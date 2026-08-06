@@ -2062,10 +2062,6 @@ function parseXenoMessage(body) {
   return loot;
 }
 
-async function processXenoReports(messages) {
-  const xenoMsgs = (messages || []).filter(m => m.subject === 'Xeno Survey Complete');
-  if (!xenoMsgs.length) return 0;
-
 async function processXenoReports(messages, universe = DEFAULT_UNIVERSE) {
   const xenoMsgs = (messages || []).filter(m => m.subject === 'Xeno Survey Complete');
   if (!xenoMsgs.length) return 0;
@@ -2925,8 +2921,7 @@ function routeIntercepted(path, json, universe = DEFAULT_UNIVERSE) {
   });
 }
 
-// Exposed for the node test harness (tests/processors.test.js). The service
-// worker itself drives everything through the listeners registered above.
+// Exposed for the node test harness (tests/processors.test.js).
 export {
   processSurveyReports, processPirateReports, processMiningReports,
   processPvpReports,
