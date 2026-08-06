@@ -170,6 +170,7 @@ export function renderAll() {
     renderSettingsTab();
     return;
   }
+  if (activeTab === 'simulator') return;   // iframe handles its own rendering
   populateEventOptions();
   const mode = getMode();
   const t = getTotalsForMode();
@@ -206,6 +207,7 @@ export const TAB_CONTENT = {
   xeno: 'xeno-content',
   market: 'market-content',
   techtree: 'techtree-content',
+  simulator: 'simulator-content',
   settings: 'settings-content',
 };
 
@@ -218,7 +220,14 @@ document.querySelectorAll('.tab').forEach(btn => {
     }
     // View mode and records cap are meaningless on these tabs.
     document.getElementById('global-controls').style.display =
-      (activeTab === 'finder' || activeTab === 'asteroids' || activeTab === 'fleets' || activeTab === 'scouting' || activeTab === 'techtree' || activeTab === 'market' || activeTab === 'battles' || activeTab === 'settings') ? 'none' : '';
+      (activeTab === 'finder' || activeTab === 'asteroids' || activeTab === 'fleets' || activeTab === 'scouting' || activeTab === 'techtree' || activeTab === 'market' || activeTab === 'battles' || activeTab === 'settings' || activeTab === 'simulator') ? 'none' : '';
+    // Update simulator iframe src when switching to the simulator tab.
+    if (activeTab === 'simulator') {
+      const iframe = document.getElementById('sim-iframe');
+      const u = activeUniverse;
+      const want = `simulator.html${u ? `?universe=${encodeURIComponent(u)}` : ''}`;
+      if (iframe && !iframe.src.endsWith(want)) iframe.src = browser.runtime.getURL(want);
+    }
     positionControls();
     renderAll();
   });
@@ -478,9 +487,6 @@ async function maybeWarnStorage() {
 
 positionControls();
 initUniverseBar().then(u => {
-  // Keep Combat Simulator link in sync with the active universe.
-  const simLink = document.getElementById('sim-link');
-  if (simLink && u) simLink.href = `simulator.html?universe=${encodeURIComponent(u)}`;
   return loadAll(u);
 }).then(maybeWarnStorage);
 maybeShowWhatsNew();
@@ -514,8 +520,11 @@ export async function initUniverseBar() {
     btn.addEventListener('click', () => {
       setActiveUniverse(u);
       document.querySelectorAll('.universe-tab').forEach(b => b.classList.toggle('active', b.dataset.universe === u));
-      const simLink = document.getElementById('sim-link');
-      if (simLink) simLink.href = `simulator.html?universe=${encodeURIComponent(u)}`;
+      // Update simulator iframe immediately if it's the active tab.
+      if (activeTab === 'simulator') {
+        const iframe = document.getElementById('sim-iframe');
+        if (iframe) iframe.src = browser.runtime.getURL(`simulator.html?universe=${encodeURIComponent(u)}`);
+      }
       loadAll(u);
     });
     bar.appendChild(btn);

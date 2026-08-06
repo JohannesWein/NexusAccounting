@@ -28,6 +28,7 @@
     <button class="tab" data-tab="xeno">Xeno</button>
     <button class="tab" data-tab="market">Market</button>
     <button class="tab" data-tab="techtree">Tech Tree</button>
+    <button class="tab" data-tab="simulator">⚔ Combat Simulator</button>
     <button class="tab" data-tab="settings" style="margin-left:auto; color:#8b949e;">⚙ Settings</button>
   </nav>
 
@@ -39,7 +40,6 @@
     <button id="btn-export">Export JSON</button>
     <button id="btn-import">Import JSON</button>
     <input id="import-file" type="file" accept=".json,application/json" style="display:none;" />
-    <a id="sim-link" href="simulator.html" style="color:#58a6ff; margin-left:auto;">Combat Simulator →</a>
   </div>
 
   <div class="controls" id="global-controls">
@@ -1015,6 +1015,12 @@
         <button id="tt-queue-clear" style="display:none;">Clear queue</button>
       </aside>
     </div>
+  </div>
+
+  <!-- Combat Simulator tab — loaded in iframe so its own module graph stays isolated -->
+  <div id="simulator-content" style="display:none;">
+    <iframe id="sim-iframe" src="simulator.html" frameborder="0"
+      style="width:100%; height:calc(100vh - 140px); min-height:600px; border:none; border-radius:8px; background:#0d1117;"></iframe>
   </div>
 
   <!-- Settings tab content -->
