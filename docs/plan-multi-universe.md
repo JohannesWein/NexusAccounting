@@ -97,10 +97,35 @@ Universen sind vollständig unabhängig — getrenntes Storage, getrennte Fleet-
 6. Import von s0-Export in nf-aktivierter Extension → Warnung erscheint
 7. "Add Universe" mit neuem Subdomain → funktioniert ohne Manifest-Update
 
+## Auto-Erkennung aktiver Universen (live verifiziert)
+
+**Befund aus Chrome-Inspektion (s0 + nf gleichzeitig geöffnet):**
+
+| Eigenschaft | s0 | nf |
+|---|---|---|
+| `user.id` (universe-lokal) | 9696 | 395 |
+| `user.email` | `steam-...@noreply.nexuslegacy.space` | `uuuren@gmail.com` |
+| `user.leaderType` | `industrialist` | `diplomat` |
+| `galaxytest-auth` localStorage-Key | ✅ vorhanden | ✅ vorhanden (gleicher Key-Name, aber domain-isoliert) |
+| `nexus_token` in `document.cookie` | ❌ nicht sichtbar (HttpOnly) | ❌ nicht sichtbar (HttpOnly) |
+
+**Wichtige Erkenntnisse:**
+
+1. **Auto-Detection ist möglich** — die Extension kann via `browser.cookies.get({ url: 'https://nf.nexuslegacy.space', name: 'nexus_token' })` prüfen ob eine Session existiert. Die Extension hat die `cookies`-Permission + Host-Permission für `*.nexuslegacy.space`.
+
+2. **`galaxytest-auth`** ist der localStorage-Key der Spiels für den Auth-State (Zustand-Store). Er ist auf beiden Universen identisch benannt, aber durch den Browser domain-isoliert (`s0.nexuslegacy.space` vs. `nf.nexuslegacy.space` haben separate localStorage-Instanzen).
+
+3. **User-IDs sind universe-lokal** — dieselbe Person hat auf s0 ID 9696 und auf nf ID 395. Storage-Keys dürfen niemals nur auf `userId` basieren, sondern immer auf `{universe}:{userId}` oder `{universe}:{key}`.
+
+4. **Steam-Account ≠ nf-Account** — auf nf kann eine normale E-Mail statt Steam verwendet werden. Kein verlässliches Cross-Universe-Linking über User-Felder möglich.
+
+**Empfehlung für Phase 8 (Settings):** Beim Öffnen der Settings `browser.cookies.get()` für alle bekannten Universen aufrufen und Universen mit aktiver Session automatisch vorschlagen (Checkbox vorausfüllen, aber nicht ohne User-Bestätigung aktivieren).
+
 ## Entscheidungen
 
 - Wildcard `*.nexuslegacy.space` im Manifest (nicht dynamisch per scripting API)
 - Flat Key-Schema `s0:totals` statt nested Objects — minimaler Umbau
 - Einmalige Migration bei `onInstalled` — kein Datenverlust für Bestandsnutzer
 - Kein Standard-Universum erzwungen — `activeUniverse: null` bis User eines aktiviert
+- Auto-Detection per `browser.cookies.get()` für Session-Check (kein API-Call nötig)
 - Cross-Universe-Aggregat-View ausgeklammert (MVP)
