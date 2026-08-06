@@ -45,6 +45,7 @@ const lsTypeFilter = new Set();    // live-search type filter (independent)
 const lsZoneFilter = new Set();    // live-search zone filter (independent)
 
 let afInited = false;
+let afInitedUniverse = null;
 let afPlanets = [];                // [{ id, name, systemId, systemName, isHomeworld }]
 let afRefMS = null;                // chosen reference planet system coords
 let afFields = [];                 // scanned asteroid fields
@@ -72,13 +73,23 @@ async function resolveAllianceTags(names) {
 }
 
 export async function initAsteroidsTab() {
-  if (afInited) return;
-  afInited = true;
+  const universe = activeUniverse || 's0';
+  if (afInited && afInitedUniverse === universe) return;
+  afInitedUniverse = universe;
+
+  // Rebind universe-specific state on universe switch.
+  afPlanets = [];
+  afRefMS = null;
+  afFields = [];
+  afMap = null;
+  afMiningFieldIds = new Set();
+  for (const k of Object.keys(sectorSystems)) delete sectorSystems[k];
+
   const status = document.getElementById('af-progress');
   status.textContent = 'Loading…';
 
   const planets = await browser.runtime.sendMessage({ type: 'GET_PLANETS', universe: activeUniverse });
-  if (planets.error) { status.textContent = `Error: ${planets.error}`; afInited = false; return; }
+  if (planets.error) { status.textContent = `Error: ${planets.error}`; return; }
   afPlanets = (planets.planets || []).filter(p => p.systemId != null);
 
   const me = await browser.runtime.sendMessage({ type: 'GET_AUTH_ME', universe: activeUniverse });
@@ -109,45 +120,52 @@ export async function initAsteroidsTab() {
   refreshSlots();
 
   await refreshTemplates();
-  // Keep the selector in sync with edits made in the Fleets tab.
-  browser.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local') return;
-    if (changes.fleet_templates) refreshTemplates();
-    // Live search can be stopped from the game-page results window — reflect it.
-    if (changes.live_search) {
-      const en = !!(changes.live_search.newValue && changes.live_search.newValue.enabled);
-      if (en !== lsRunning) { lsRunning = en; setLsButton(); }
-    }
-  });
+  if (!afInited) {
+    afInited = true;
+    // Keep the selector in sync with edits made in the Fleets tab.
+    browser.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local') return;
+      const u = activeUniverse;
+      const ftKey = u ? `${u}:fleet_templates` : 'fleet_templates';
+      const lsKey = u ? `${u}:live_search` : 'live_search';
+      if (changes[ftKey] || changes.fleet_templates) refreshTemplates();
+      // Live search can be stopped from the game-page results window — reflect it.
+      const c = changes[lsKey] || changes.live_search;
+      if (c) {
+        const en = !!(c.newValue && c.newValue.enabled);
+        if (en !== lsRunning) { lsRunning = en; setLsButton(); }
+      }
+    });
 
-  pSel.addEventListener('change', () => { rememberSelection('af-planet', pSel.value); setRefFromMap(pSel.value); renderAsteroids(); updateAfAvail(); });
-  document.getElementById('af-scan').addEventListener('click', scan);
-  document.getElementById('af-template-select').addEventListener('change', e => { rememberSelection('af-template-select', e.target.value); computeFuel(); });
-  document.getElementById('af-results-head').addEventListener('click', e => {
-    const th = e.target.closest('th.sortable');
-    if (!th) return;
-    afSort = { key: th.dataset.key, dir: afSort.key === th.dataset.key ? -afSort.dir : -1 };
-    afPage = 1;
-    renderAsteroids();
-  });
-  document.getElementById('af-btn-prev').addEventListener('click', () => { afPage--; renderAsteroids(); });
-  document.getElementById('af-btn-next').addEventListener('click', () => { afPage++; renderAsteroids(); });
-  for (const id of ['af-mult-min', 'af-qty-min', 'af-left-min']) {
-    document.getElementById(id).addEventListener('input', e => {
-      if (parseFloat(e.target.value) < 0) e.target.value = '';   // positive only
+    pSel.addEventListener('change', () => { rememberSelection('af-planet', pSel.value); setRefFromMap(pSel.value); renderAsteroids(); updateAfAvail(); });
+    document.getElementById('af-scan').addEventListener('click', scan);
+    document.getElementById('af-template-select').addEventListener('change', e => { rememberSelection('af-template-select', e.target.value); computeFuel(); });
+    document.getElementById('af-results-head').addEventListener('click', e => {
+      const th = e.target.closest('th.sortable');
+      if (!th) return;
+      afSort = { key: th.dataset.key, dir: afSort.key === th.dataset.key ? -afSort.dir : -1 };
       afPage = 1;
       renderAsteroids();
     });
-  }
+    document.getElementById('af-btn-prev').addEventListener('click', () => { afPage--; renderAsteroids(); });
+    document.getElementById('af-btn-next').addEventListener('click', () => { afPage++; renderAsteroids(); });
+    for (const id of ['af-mult-min', 'af-qty-min', 'af-left-min']) {
+      document.getElementById(id).addEventListener('input', e => {
+        if (parseFloat(e.target.value) < 0) e.target.value = '';   // positive only
+        afPage = 1;
+        renderAsteroids();
+      });
+    }
 
-  // Live-search controls.
-  document.getElementById('ls-search').addEventListener('click', toggleLiveSearch);
-  document.getElementById('ls-planet').addEventListener('change', saveLiveSearchIfOn);
-  for (const id of ['ls-mult-min', 'ls-qty-min', 'ls-left-min', 'ls-near']) {
-    document.getElementById(id).addEventListener('input', e => {
-      if (parseFloat(e.target.value) < 0) e.target.value = '';   // positive only
-      saveLiveSearchIfOn();
-    });
+    // Live-search controls.
+    document.getElementById('ls-search').addEventListener('click', toggleLiveSearch);
+    document.getElementById('ls-planet').addEventListener('change', saveLiveSearchIfOn);
+    for (const id of ['ls-mult-min', 'ls-qty-min', 'ls-left-min', 'ls-near']) {
+      document.getElementById(id).addEventListener('input', e => {
+        if (parseFloat(e.target.value) < 0) e.target.value = '';   // positive only
+        saveLiveSearchIfOn();
+      });
+    }
   }
 
   // Ship catalog (names + icons) for the availability strip, then start it.
@@ -296,7 +314,9 @@ async function toggleLiveSearch() {
 
 // Restore the live-search controls from the persisted config.
 async function loadLiveSearch() {
-  const { live_search: cfg } = await browser.storage.local.get('live_search');
+  const key = activeUniverse ? `${activeUniverse}:live_search` : 'live_search';
+  const raw = await browser.storage.local.get([key, 'live_search']);
+  const cfg = raw[key] || raw.live_search;
   if (cfg) {
     if (cfg.planetId != null) document.getElementById('ls-planet').value = cfg.planetId;
     document.getElementById('ls-mult-min').value = cfg.multMin ?? '';

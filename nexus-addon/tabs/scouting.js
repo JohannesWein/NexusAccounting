@@ -22,6 +22,7 @@ let scPending = [];               // anomalies awaiting investigation
 let scReturning = [];             // investigated systems whose fleet is still homebound
 let scInvestigating = new Set();  // systemIds with an investigate mission in flight
 const scJustSurveyed = new Set(); // systemIds surveyed this session — the missions API lags, so exclude them locally
+const scJustExplored = new Set(); // same, for explore missions
 const scJustInvestigated = new Set(); // same, for investigate missions
 let scTick = 0;
 let scMissions = [];          // in-flight survey/investigate/collect fleets
@@ -29,7 +30,7 @@ let scMissions = [];          // in-flight survey/investigate/collect fleets
 // all of them. Keyed so one render doesn't drop another surface's tickers.
 const scTicks = { scan: [], invest: [], debris: [], salvage: [] };
 
-const MISSION_LABELS = { survey: 'Survey', investigate: 'Investigate',
+const MISSION_LABELS = { explore: 'Explore', survey: 'Survey', investigate: 'Investigate',
   collect_debris: 'Collect Debris', collect_salvage: 'Collect Salvage' };
 
 // The in-flight mission heading to a system for a given type (or undefined).
@@ -63,23 +64,23 @@ function renderTransit() {
   if (!box) return;
   box.textContent = '';
   scTicks.scan = [];
-  const surveys = scMissions.filter(m => m.missionType === 'survey');
-  document.getElementById('sc-transit-count').textContent = `${surveys.length} scanning`;
-  if (!surveys.length) {
+  const outbound = scMissions.filter(m => m.missionType === 'survey' || m.missionType === 'explore');
+  document.getElementById('sc-transit-count').textContent = `${outbound.length} scanning`;
+  if (!outbound.length) {
     const d = document.createElement('div');
     d.style.cssText = 'color:#484f58; padding:4px 0;';
     d.textContent = 'No scanning fleets in transit.';
     box.appendChild(d);
     return;
   }
-  for (const m of surveys) {
+  for (const m of outbound) {
     const target = m.targetSystemName || m.targetPlanetName || `#${m.targetSystemId}`;
     const row = document.createElement('div');
     const head = document.createElement('div');
     head.style.cssText = 'display:flex; align-items:baseline; gap:8px; font-size:0.85rem; margin-bottom:3px;';
     const name = document.createElement('span');
     name.style.color = '#e6edf3';
-    name.textContent = `${target} · Survey`;
+    name.textContent = `${target} · ${MISSION_LABELS[m.missionType] || 'Mission'}`;
     head.appendChild(name);
     const bar = makeMissionBar(m);
     bar.el.style.marginTop = '0';
@@ -105,6 +106,7 @@ export async function initScoutingTab() {
   scReturning = [];
   scInvestigating = new Set();
   scJustSurveyed.clear();
+  scJustExplored.clear();
   scJustInvestigated.clear();
 
   const [planets, map] = await Promise.all([
@@ -113,7 +115,7 @@ export async function initScoutingTab() {
   ]);
   if (map.error) { status.textContent = `Error: ${map.error}`; return; }
   for (const s of (map.systems || [])) {
-    scSystems[s.id] = { x: s.x, y: s.y, name: s.name, zone: s.securityZone || null };
+    scSystems[s.id] = { x: s.x, y: s.y, name: s.name, zone: s.securityZone || null, visibility: s.visibility || null };
   }
   scPlanets = (planets.planets || []).filter(p => p.systemId != null);
 
@@ -264,7 +266,7 @@ function nearestTarget(srcSystemId, onCooldown) {
     if (onCooldown.has(sid)) continue;
     if (scZoneFilter.size && !scZoneFilter.has(s.zone)) continue;
     const d = Math.hypot(s.x - src.x, s.y - src.y);
-    if (d < bestD) { bestD = d; best = { id: sid, name: s.name, dist: Math.round(d) }; }
+    if (d < bestD) { bestD = d; best = { id: sid, name: s.name, dist: Math.round(d), visibility: s.visibility || null }; }
   }
   return best;
 }
@@ -286,9 +288,10 @@ async function launchScan() {
   const onCooldown = new Set((cd.cooldowns || [])
     .filter(c => new Date(c.cooldownEndsAt) > now).map(c => c.systemId));
   for (const m of (mi.missions || [])) {
-    if (m.missionType === 'survey' && m.targetSystemId != null) onCooldown.add(m.targetSystemId);
+    if ((m.missionType === 'survey' || m.missionType === 'explore') && m.targetSystemId != null) onCooldown.add(m.targetSystemId);
   }
   for (const id of scJustSurveyed) onCooldown.add(id);
+  for (const id of scJustExplored) onCooldown.add(id);
 
   const target = nearestTarget(planet ? planet.systemId : null, onCooldown);
   if (!target) {
@@ -299,16 +302,38 @@ async function launchScan() {
 
   const r = await templateShips(document.getElementById('sc-scan-template').value, planetId);
   if (r.error) { status.textContent = r.error; return; }
-  if (!await confirmDialog(`Survey ${target.name} (${target.dist} away)?\n\n` +
+  const plannedMission = (target.visibility === 'full' || target.visibility === 'partial') ? 'Survey' : 'Explore';
+  if (!await confirmDialog(`${plannedMission} ${target.name} (${target.dist} away)?\n\n` +
     `From: ${planet ? planet.name : planetId}\nTemplate: ${r.name}` +
     (r.short ? '\n\n⚠ Some template ships are short; sending what is available.' : ''), r.ships)) return;
 
-  status.textContent = `Surveying ${target.name}…`;
+  const missionType = (target.visibility === 'full' || target.visibility === 'partial') ? 'survey' : 'explore';
+  status.textContent = `${MISSION_LABELS[missionType]}ing ${target.name}…`;
   const res = await browser.runtime.sendMessage({
-    type: 'SEND_SURVEY', sourcePlanetId: planetId, targetSystemId: target.id, ships: r.ships, universe: activeUniverse });
-  if (res.error) { status.textContent = `Survey failed: ${res.error}`; return; }
-  scJustSurveyed.add(target.id);
-  status.textContent = `Probe sent to ${target.name} ✓`;
+    type: missionType === 'survey' ? 'SEND_SURVEY' : 'SEND_EXPLORE',
+    sourcePlanetId: planetId,
+    targetSystemId: target.id,
+    ships: r.ships,
+    universe: activeUniverse,
+  });
+  if (res.error) {
+    if (missionType === 'survey' && /Explore this system before surveying it/i.test(res.error || '')) {
+      const retry = await browser.runtime.sendMessage({
+        type: 'SEND_EXPLORE', sourcePlanetId: planetId, targetSystemId: target.id, ships: r.ships, universe: activeUniverse,
+      });
+      if (retry.error) { status.textContent = `Explore failed: ${retry.error}`; return; }
+      scJustExplored.add(target.id);
+      status.textContent = `Explore sent to ${target.name} ✓`;
+      loadActiveSurveys();
+      updateAvail();
+      return;
+    }
+    status.textContent = `${MISSION_LABELS[missionType]} failed: ${res.error}`;
+    return;
+  }
+  if (missionType === 'survey') scJustSurveyed.add(target.id);
+  else scJustExplored.add(target.id);
+  status.textContent = `${MISSION_LABELS[missionType]} sent to ${target.name} ✓`;
   loadActiveSurveys();
   updateAvail();
 }
@@ -751,7 +776,11 @@ function planFleet(total, ships) {
 }
 
 async function loadDebris() {
-  const { debris_fields, debris_last_check } = await browser.storage.local.get(['debris_fields', 'debris_last_check']);
+  const debrisKey = activeUniverse ? `${activeUniverse}:debris_fields` : 'debris_fields';
+  const lastCheckKey = activeUniverse ? `${activeUniverse}:debris_last_check` : 'debris_last_check';
+  const raw = await browser.storage.local.get([debrisKey, lastCheckKey, 'debris_fields', 'debris_last_check']);
+  const debris_fields = raw[debrisKey] || raw.debris_fields;
+  const debris_last_check = raw[lastCheckKey] || raw.debris_last_check;
   scDebris = (debris_fields || []).map(f => ({ ...f, total: (f.ore || 0) + (f.silicates || 0) + (f.alloys || 0) }));
   document.getElementById('sc-debris-last').textContent = debris_last_check
     ? `Last check: ${new Date(debris_last_check).toLocaleString()}`

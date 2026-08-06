@@ -19,11 +19,17 @@ import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, c
 const XENO_CACHE_TTL = 24 * 3600 * 1000;   // moon ownership rarely changes
 const XENO_COOLDOWN_MS = 48 * 3600 * 1000; // local cooldown after we survey a moon
 
+function xenoSurveyedKey() {
+  return activeUniverse ? `${activeUniverse}:xeno_surveyed_moons` : 'xeno_surveyed_moons';
+}
+
 // moonId → { at, name, systemName } — when we launched a survey there and
 // where, for both the eligibility check and the cooldown table. Pruned to
 // entries still within the cooldown window whenever loaded.
 async function loadSurveyedMoons() {
-  const { xeno_surveyed_moons } = await browser.storage.local.get('xeno_surveyed_moons');
+  const key = xenoSurveyedKey();
+  const raw = await browser.storage.local.get([key, 'xeno_surveyed_moons']);
+  const xeno_surveyed_moons = raw[key] || raw.xeno_surveyed_moons;
   const now = Date.now();
   const kept = {};
   for (const [id, entry] of Object.entries(xeno_surveyed_moons || {})) {
@@ -33,9 +39,10 @@ async function loadSurveyedMoons() {
 }
 
 async function markMoonSurveyed(moonId, name, systemName, finishAt) {
+  const key = xenoSurveyedKey();
   const surveyed = await loadSurveyedMoons();
   surveyed[moonId] = { at: finishAt, name, systemName };
-  await browser.storage.local.set({ xeno_surveyed_moons: surveyed });
+  await browser.storage.local.set({ [key]: surveyed });
 }
 
 // The just-launched mission for this moon, or null. Used to read its
@@ -48,6 +55,7 @@ async function findXenoMissionForMoon(moonId) {
 }
 
 let inited = false;
+let initedUniverse = null;
 let xnPlanets = [];
 let xnTemplates = [];
 let xnMap = null;          // { systems, byId } from GET_GALAXY_MAP, cached
@@ -142,13 +150,21 @@ document.getElementById('xn-report-btn-next').addEventListener('click', () => { 
 export function setXnReportPage(n) { xnReportPage = n; }
 
 export async function initXenoTab() {
-  if (inited) return;
-  inited = true;
+  const universe = activeUniverse || 's0';
+  if (inited && initedUniverse === universe) return;
+  initedUniverse = universe;
+
+  // Rebind universe-specific state on universe switch.
+  xnPlanets = [];
+  xnTemplates = [];
+  xnMap = null;
+  xnMissions = [];
+
   const status = document.getElementById('xn-progress');
   status.textContent = 'Loading…';
 
   const planets = await browser.runtime.sendMessage({ type: 'GET_PLANETS', universe: activeUniverse });
-  if (planets.error) { status.textContent = `Error: ${planets.error}`; inited = false; return; }
+  if (planets.error) { status.textContent = `Error: ${planets.error}`; return; }
   xnPlanets = (planets.planets || []).filter(p => p.systemId != null);
 
   const pSel = document.getElementById('xn-planet');
@@ -166,22 +182,28 @@ export async function initXenoTab() {
   }
 
   await refreshTemplates();
-  browser.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes.fleet_templates) refreshTemplates();
-  });
+  if (!inited) {
+    inited = true;
+    browser.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local') return;
+      const u = activeUniverse;
+      const key = u ? `${u}:fleet_templates` : 'fleet_templates';
+      if (changes[key] || changes.fleet_templates) refreshTemplates();
+    });
 
-  document.getElementById('xn-planet').addEventListener('change', e => {
-    rememberSelection('xn-planet', e.target.value);
-    updateAvail();
-  });
-  document.getElementById('xn-template').addEventListener('change', e => rememberSelection('xn-template', e.target.value));
-  document.getElementById('xn-scan').addEventListener('click', launchRuinsSurvey);
+    document.getElementById('xn-planet').addEventListener('change', e => {
+      rememberSelection('xn-planet', e.target.value);
+      updateAvail();
+    });
+    document.getElementById('xn-template').addEventListener('change', e => rememberSelection('xn-template', e.target.value));
+    document.getElementById('xn-scan').addEventListener('click', launchRuinsSurvey);
 
-  setInterval(() => {
-    if (document.getElementById('xeno-content').style.display === 'none') return;
-    for (const upd of xnTicks) upd();
-    renderCooldownTable();   // re-render each tick so "time left" counts down / expired rows drop
-  }, 1000);
+    setInterval(() => {
+      if (document.getElementById('xeno-content').style.display === 'none') return;
+      for (const upd of xnTicks) upd();
+      renderCooldownTable();   // re-render each tick so "time left" counts down / expired rows drop
+    }, 1000);
+  }
 
   status.textContent = '';
   updateAvail();

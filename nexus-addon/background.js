@@ -286,6 +286,11 @@ browser.runtime.onMessage.addListener(msg => {
       sourcePlanetId: msg.sourcePlanetId, targetSystemId: msg.targetSystemId, ships: msg.ships,
     }, u);
   }
+  if (msg.type === 'SEND_EXPLORE') {
+    return gamePost('/api/fleet/explore', {
+      sourcePlanetId: msg.sourcePlanetId, targetSystemId: msg.targetSystemId, ships: msg.ships,
+    }, u);
+  }
   if (msg.type === 'SEND_INVESTIGATE') {
     return gamePost('/api/fleet/investigate', {
       sourcePlanetId: msg.sourcePlanetId, reportId: msg.reportId, ships: msg.ships,
