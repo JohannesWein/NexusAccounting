@@ -1,4 +1,5 @@
 // Planet Finder tab: galaxy map, filters, scan loop.
+import { activeUniverse } from '../common.js';
 
 // ── Planet Finder tab ──────────────────────────────────────────────────────
 
@@ -48,11 +49,11 @@ export async function initFinderTab() {
   const status = document.getElementById('f-progress');
   status.textContent = 'Loading galaxy map…';
   const [arms, map, me, ally, hubs] = await Promise.all([
-    browser.runtime.sendMessage({ type: 'GET_ARMS' }),
-    browser.runtime.sendMessage({ type: 'GET_GALAXY_MAP' }),
-    browser.runtime.sendMessage({ type: 'GET_AUTH_ME' }),
-    browser.runtime.sendMessage({ type: 'GET_ALLIANCE' }),
-    browser.runtime.sendMessage({ type: 'GET_HUBS' }),
+    browser.runtime.sendMessage({ type: 'GET_ARMS', universe: activeUniverse }),
+    browser.runtime.sendMessage({ type: 'GET_GALAXY_MAP', universe: activeUniverse }),
+    browser.runtime.sendMessage({ type: 'GET_AUTH_ME', universe: activeUniverse }),
+    browser.runtime.sendMessage({ type: 'GET_ALLIANCE', universe: activeUniverse }),
+    browser.runtime.sendMessage({ type: 'GET_HUBS', universe: activeUniverse }),
   ]);
   if (arms.error || map.error) {
     status.textContent = `Error: ${arms.error || map.error}`;
@@ -250,7 +251,7 @@ export function focusSystem(systemId) {
 export async function getSystemPlanets(systemId, cache, ttl = SCAN_CACHE_TTL) {
   const entry = cache[systemId];
   if (entry && Date.now() - entry.at < ttl) return entry.data;
-  const data = await browser.runtime.sendMessage({ type: 'GET_SYSTEM_PLANETS', systemId });
+  const data = await browser.runtime.sendMessage({ type: 'GET_SYSTEM_PLANETS', systemId, universe: activeUniverse });
   if (data.error) throw new Error(data.error);
   cache[systemId] = { data, at: Date.now() };
   return data;
@@ -412,7 +413,7 @@ document.getElementById('f-search').addEventListener('click', async function () 
   const owners = [...new Set(finderHits.map(h => h.owner).filter(Boolean))];
   const missing = owners.filter(n => !(n in rankCache));
   for (let i = 0; i < missing.length; i++) {
-    const r = await browser.runtime.sendMessage({ type: 'GET_PLAYER_RANK', name: missing[i] });
+    const r = await browser.runtime.sendMessage({ type: 'GET_PLAYER_RANK', name: missing[i], universe: activeUniverse });
     rankCache[missing[i]] = (r && !r.error) ? r : { military: null, economy: null, research: null };
     status.textContent = `Fetching player ranks… ${i + 1}/${missing.length}`;
     await new Promise(res => setTimeout(res, 80));

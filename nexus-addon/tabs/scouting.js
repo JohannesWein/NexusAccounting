@@ -7,7 +7,7 @@
 // All routed through the game tab (same-origin) like the asteroid mine call.
 
 import { loadFleetTemplates } from './fleets.js';
-import { applySort, attachSortable, clearAvailStrip, confirmDialog, fmtCountdown, fuelEstimate, makeMissionBar, rememberSelection, rememberedSelections, renderAvailStrip, store } from '../common.js';
+import { applySort, attachSortable, clearAvailStrip, confirmDialog, fmtCountdown, fuelEstimate, makeMissionBar, rememberSelection, rememberedSelections, renderAvailStrip, store, activeUniverse } from '../common.js';
 
 let inited = false;
 let scPlanets = [];          // [{ id, name, systemId, systemName }]
@@ -95,8 +95,8 @@ export async function initScoutingTab() {
   status.textContent = 'Loading…';
 
   const [planets, map] = await Promise.all([
-    browser.runtime.sendMessage({ type: 'GET_PLANETS' }),
-    browser.runtime.sendMessage({ type: 'GET_GALAXY_MAP' }),
+    browser.runtime.sendMessage({ type: 'GET_PLANETS', universe: activeUniverse }),
+    browser.runtime.sendMessage({ type: 'GET_GALAXY_MAP', universe: activeUniverse }),
   ]);
   if (map.error) { status.textContent = `Error: ${map.error}`; inited = false; return; }
   for (const s of (map.systems || [])) {
@@ -189,7 +189,7 @@ async function templateShips(templateId, planetId) {
     .filter(s => s.quantity > 0);
   if (!wanted.length) return { error: `Template "${tpl.name}" has no ships.` };
 
-  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId, universe: activeUniverse });
   if (av.error) return { error: av.error };
   const ships = wanted
     .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, av.available[s.shipDefId] || 0) }))
@@ -255,8 +255,8 @@ async function launchScan() {
 
   status.textContent = 'Finding nearest system…';
   const [cd, mi] = await Promise.all([
-    browser.runtime.sendMessage({ type: 'GET_SURVEY_COOLDOWNS' }),
-    browser.runtime.sendMessage({ type: 'GET_MISSIONS' }),
+    browser.runtime.sendMessage({ type: 'GET_SURVEY_COOLDOWNS', universe: activeUniverse }),
+    browser.runtime.sendMessage({ type: 'GET_MISSIONS', universe: activeUniverse }),
   ]);
   if (cd.error) { status.textContent = `Error: ${cd.error}`; return; }
   const now = Date.now();
@@ -284,8 +284,7 @@ async function launchScan() {
 
   status.textContent = `Surveying ${target.name}…`;
   const res = await browser.runtime.sendMessage({
-    type: 'SEND_SURVEY', sourcePlanetId: planetId, targetSystemId: target.id, ships: r.ships,
-  });
+    type: 'SEND_SURVEY', sourcePlanetId: planetId, targetSystemId: target.id, ships: r.ships,, universe: activeUniverse });
   if (res.error) { status.textContent = `Survey failed: ${res.error}`; return; }
   scJustSurveyed.add(target.id);
   status.textContent = `Probe sent to ${target.name} ✓`;
@@ -295,8 +294,8 @@ async function launchScan() {
 
 async function loadActiveSurveys() {
   const [res, mi] = await Promise.all([
-    browser.runtime.sendMessage({ type: 'GET_SURVEY_REPORTS' }),
-    browser.runtime.sendMessage({ type: 'GET_MISSIONS' }),
+    browser.runtime.sendMessage({ type: 'GET_SURVEY_REPORTS', universe: activeUniverse }),
+    browser.runtime.sendMessage({ type: 'GET_MISSIONS', universe: activeUniverse }),
   ]);
   if (res.error) { document.getElementById('sc-count').textContent = `Error: ${res.error}`; return; }
   if (mi.maxFleetSlots != null) {
@@ -509,8 +508,7 @@ async function investigate(report) {
 
   status.textContent = `Investigating ${report.systemName}…`;
   const res = await browser.runtime.sendMessage({
-    type: 'SEND_INVESTIGATE', sourcePlanetId: planetId, reportId: report.id, ships: r.ships,
-  });
+    type: 'SEND_INVESTIGATE', sourcePlanetId: planetId, reportId: report.id, ships: r.ships,, universe: activeUniverse });
   if (res.error) { status.textContent = `Investigate failed: ${res.error}`; return; }
   scJustInvestigated.add(report.systemId);
   scInvestigating.add(report.systemId);
@@ -596,9 +594,9 @@ const scCargoSel = new Set();        // selected shipDefIds
 
 async function loadCargoShips() {
   const [res, stored, me] = await Promise.all([
-    browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' }),
+    browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS', universe: activeUniverse }),
     browser.storage.local.get('research'),
-    browser.runtime.sendMessage({ type: 'GET_AUTH_ME' }),
+    browser.runtime.sendMessage({ type: 'GET_AUTH_ME', universe: activeUniverse }),
   ]);
   const bonus = cargoBonuses(stored.research || []);
   const commander = me?.user?.activeLeaderBonuses?.cargoBonus || 0;   // leader cargo bonus
@@ -697,7 +695,7 @@ async function updateAvail() {
   const invBox = document.getElementById('sc-inv-avail');
   const planetId = Number(document.getElementById('sc-planet').value);
   if (!planetId || !scAllShips.length) { clearAvailStrip(debrisBox); clearAvailStrip(invBox); return; }
-  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId, universe: activeUniverse });
   if (av.error) { clearAvailStrip(debrisBox, av.error); clearAvailStrip(invBox, av.error); return; }
   renderAvailStrip(debrisBox, scCargoShips, av.available, 'No cargo ships on this planet.');
   renderAvailStrip(invBox, scAllShips, av.available, 'No ships on this planet.');
@@ -881,7 +879,7 @@ async function collectDebris(field) {
   if (!plan.length) { status.textContent = 'Select cargo ships above first.'; return; }
 
   // Cap to what the source planet actually has; warn if that can't carry it all.
-  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId, universe: activeUniverse });
   if (av.error) { status.textContent = `Error: ${av.error}`; return; }
   const capOf = id => (scCargoShips.find(s => s.shipDefId === id) || {}).cap || 0;
   const ships = plan
@@ -897,8 +895,7 @@ async function collectDebris(field) {
 
   status.textContent = `Collecting at ${field.system}…`;
   const res = await browser.runtime.sendMessage({
-    type: 'COLLECT_DEBRIS', sourcePlanetId: planetId, debrisId: field.debrisId, ships,
-  });
+    type: 'COLLECT_DEBRIS', sourcePlanetId: planetId, debrisId: field.debrisId, ships,, universe: activeUniverse });
   if (res.error) { status.textContent = `Collect failed: ${res.error}`; return; }
   scJustCollected.add(field.debrisId);
   if (field.systemId != null) scCollecting.set(field.systemId, { field: { ...field }, seenRun: false });
@@ -1032,7 +1029,7 @@ async function collectSalvage(salvage) {
   if (!plan.length) { status.textContent = 'Select cargo ships above first.'; return; }
 
   // Cap to what the source planet has; warn if that can't carry it all.
-  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId, universe: activeUniverse });
   if (av.error) { status.textContent = `Error: ${av.error}`; return; }
   const capOf = id => (scCargoShips.find(s => s.shipDefId === id) || {}).cap || 0;
   const ships = plan
@@ -1048,8 +1045,7 @@ async function collectSalvage(salvage) {
 
   status.textContent = `Collecting salvage at ${salvage.system}…`;
   const res = await browser.runtime.sendMessage({
-    type: 'COLLECT_SALVAGE', sourcePlanetId: planetId, reportId: salvage.reportId, ships,
-  });
+    type: 'COLLECT_SALVAGE', sourcePlanetId: planetId, reportId: salvage.reportId, ships,, universe: activeUniverse });
   if (res.error) { status.textContent = `Collect failed: ${res.error}`; return; }
   scJustSalvaged.add(salvage.reportId);
   status.textContent = `Fleet sent to ${salvage.system} ✓`;

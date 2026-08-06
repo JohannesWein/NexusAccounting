@@ -14,7 +14,7 @@
 
 import { SCAN_CACHE_MAX, getSystemPlanets } from './finder.js';
 import { loadFleetTemplates } from './fleets.js';
-import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeRawLossCost, computeSeries, confirmDialog, fillResourceCards, filterZone, fmt, fmtCountdown, fuelForMode, getLabelKey, getMode, inWindowRange, makeMissionBar, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, store, windowActive, zeroCell } from '../common.js';
+import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeRawLossCost, computeSeries, confirmDialog, fillResourceCards, filterZone, fmt, fmtCountdown, fuelForMode, getLabelKey, getMode, inWindowRange, makeMissionBar, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, store, windowActive, zeroCell, activeUniverse } from '../common.js';
 
 const XENO_CACHE_TTL = 24 * 3600 * 1000;   // moon ownership rarely changes
 const XENO_COOLDOWN_MS = 48 * 3600 * 1000; // local cooldown after we survey a moon
@@ -42,7 +42,7 @@ async function markMoonSurveyed(moonId, name, systemName, finishAt) {
 // returnDepartsAt (when the survey itself finishes and the cooldown should
 // start) — the send response doesn't include the mission record.
 async function findXenoMissionForMoon(moonId) {
-  const mi = await browser.runtime.sendMessage({ type: 'GET_MISSIONS' });
+  const mi = await browser.runtime.sendMessage({ type: 'GET_MISSIONS', universe: activeUniverse });
   if (mi.error) return null;
   return (mi.missions || []).find(m => m.missionType === 'xeno_survey' && m.cargo && m.cargo._targetMoonId === moonId) || null;
 }
@@ -147,7 +147,7 @@ export async function initXenoTab() {
   const status = document.getElementById('xn-progress');
   status.textContent = 'Loading…';
 
-  const planets = await browser.runtime.sendMessage({ type: 'GET_PLANETS' });
+  const planets = await browser.runtime.sendMessage({ type: 'GET_PLANETS', universe: activeUniverse });
   if (planets.error) { status.textContent = `Error: ${planets.error}`; inited = false; return; }
   xnPlanets = (planets.planets || []).filter(p => p.systemId != null);
 
@@ -220,7 +220,7 @@ async function templateShips(templateId, planetId) {
     .filter(s => s.quantity > 0);
   if (!wanted.length) return { error: `Template "${tpl.name}" has no ships.` };
 
-  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId, universe: activeUniverse });
   if (av.error) return { error: av.error };
   const ships = wanted
     .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, av.available[s.shipDefId] || 0) }))
@@ -234,8 +234,8 @@ async function updateAvail() {
   const planetId = Number(document.getElementById('xn-planet').value);
   if (!planetId) { clearAvailStrip(box); return; }
   const [av, defs] = await Promise.all([
-    browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId }),
-    browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' }),
+    browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId, universe: activeUniverse }),
+    browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS', universe: activeUniverse }),
   ]);
   if (av.error) { clearAvailStrip(box, av.error); return; }
   renderAvailStrip(box, defs.ships || [], av.available, 'No ships on this planet.');
@@ -243,7 +243,7 @@ async function updateAvail() {
 
 async function loadMap() {
   if (xnMap) return xnMap;
-  const res = await browser.runtime.sendMessage({ type: 'GET_GALAXY_MAP' });
+  const res = await browser.runtime.sendMessage({ type: 'GET_GALAXY_MAP', universe: activeUniverse });
   if (res.error) throw new Error(res.error);
   const systems = res.systems || [];
   const byId = {};
@@ -253,7 +253,7 @@ async function loadMap() {
 }
 
 async function refreshMissions() {
-  const mi = await browser.runtime.sendMessage({ type: 'GET_MISSIONS' });
+  const mi = await browser.runtime.sendMessage({ type: 'GET_MISSIONS', universe: activeUniverse });
   if (mi.error) return;
   if (mi.maxFleetSlots != null) {
     document.getElementById('xn-slots').textContent = `${(mi.missions || []).length}/${mi.maxFleetSlots} fleet slots`;
@@ -376,7 +376,7 @@ async function launchRuinsSurvey() {
   if (!src) { status.textContent = 'Source system not on the map.'; return; }
 
   const [mi, surveyedMoons] = await Promise.all([
-    browser.runtime.sendMessage({ type: 'GET_MISSIONS' }),
+    browser.runtime.sendMessage({ type: 'GET_MISSIONS', universe: activeUniverse }),
     loadSurveyedMoons(),
   ]);
   const targetedMoonIds = new Set((mi.missions || [])
@@ -406,8 +406,7 @@ async function launchRuinsSurvey() {
 
   status.textContent = `Launching survey to ${found.moon.name}…`;
   const res = await browser.runtime.sendMessage({
-    type: 'SEND_XENO_SURVEY', sourcePlanetId: planetId, targetMoonId: found.moon.id, ships: r.ships,
-  });
+    type: 'SEND_XENO_SURVEY', sourcePlanetId: planetId, targetMoonId: found.moon.id, ships: r.ships,, universe: activeUniverse });
   if (res.error) { status.textContent = `Launch failed: ${res.error}`; return; }
   status.textContent = `Fleet sent to ${found.moon.name} ✓`;
   updateAvail();

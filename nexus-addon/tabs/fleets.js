@@ -107,7 +107,7 @@ export async function renderFleetsTab() {
 
   const status = document.getElementById('ft-status');
   status.textContent = 'Loading ships…';
-  const res = await browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' });
+  const res = await browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS', universe: activeUniverse });
   status.textContent = res.error ? `Error: ${res.error}` : '';
   shipDefs = res.ships || [];
   fillShips();

@@ -6,7 +6,7 @@
 import {
   PER_PAGE, fmt, escapeHtml, makeStatCard, store, zoneCell, dayKey,
   computeResourcesLost, combinedLost, emptyResources,
-  RESOURCE_WEIGHTS, RARE_WEIGHT, EXTRA_RES_KEYS_UI,
+  RESOURCE_WEIGHTS, RARE_WEIGHT, EXTRA_RES_KEYS_UI, activeUniverse,
 } from '../common.js';
 
 // Resource cost of a record's ship losses (destroyed + half-cost repair).
@@ -71,7 +71,7 @@ async function loadShipImages() {
   if (shipImgByName !== null) return;
   shipImgByName = {};   // set before await so we only fetch once
   try {
-    const defs = await browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' });
+    const defs = await browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS', universe: activeUniverse });
     for (const s of (defs.ships || [])) if (s.name && s.imageUrl) shipImgByName[s.name] = s.imageUrl;
     if (document.getElementById('battles-content')) renderBattlesTab();
   } catch { /* no login / offline — names render without icons */ }

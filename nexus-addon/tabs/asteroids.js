@@ -8,7 +8,7 @@
 
 import { SCAN_CACHE_MAX, getSystemPlanets } from './finder.js';
 import { loadFleetTemplates } from './fleets.js';
-import { clearAvailStrip, editFleetDialog, fuelEstimate, rememberSelection, rememberedSelections, renderAvailStrip } from '../common.js';
+import { clearAvailStrip, editFleetDialog, fuelEstimate, rememberSelection, rememberedSelections, renderAvailStrip, activeUniverse } from '../common.js';
 
 const ICON_BASE = 'https://s0.nexuslegacy.space/images/resources/';
 // asteroid fieldType → resource icon + label
@@ -66,7 +66,7 @@ const allianceTagCache = {};   // player name → alliance tag (or null), sessio
 async function resolveAllianceTags(names) {
   const need = [...new Set(names)].filter(n => n && !(n in allianceTagCache));
   await Promise.all(need.map(async name => {
-    const res = await browser.runtime.sendMessage({ type: 'GET_PLAYER_ALLIANCE_TAG', name });
+    const res = await browser.runtime.sendMessage({ type: 'GET_PLAYER_ALLIANCE_TAG', name, universe: activeUniverse });
     allianceTagCache[name] = (res && res.tag) || null;
   }));
 }
@@ -77,11 +77,11 @@ export async function initAsteroidsTab() {
   const status = document.getElementById('af-progress');
   status.textContent = 'Loading…';
 
-  const planets = await browser.runtime.sendMessage({ type: 'GET_PLANETS' });
+  const planets = await browser.runtime.sendMessage({ type: 'GET_PLANETS', universe: activeUniverse });
   if (planets.error) { status.textContent = `Error: ${planets.error}`; afInited = false; return; }
   afPlanets = (planets.planets || []).filter(p => p.systemId != null);
 
-  const me = await browser.runtime.sendMessage({ type: 'GET_AUTH_ME' });
+  const me = await browser.runtime.sendMessage({ type: 'GET_AUTH_ME', universe: activeUniverse });
   afMyUsername = (me && !me.error && me.user) ? me.user.username : null;
 
   const pSel = document.getElementById('af-planet');
@@ -151,7 +151,7 @@ export async function initAsteroidsTab() {
   }
 
   // Ship catalog (names + icons) for the availability strip, then start it.
-  const defs = await browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' });
+  const defs = await browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS', universe: activeUniverse });
   afAllShips = (defs.ships || []).map(s => ({ shipDefId: s.shipDefId, name: s.name, imageUrl: s.imageUrl }));
   updateAfAvail();
   if (!afAvailTimer) {
@@ -171,7 +171,7 @@ async function updateAfAvail() {
   const box = document.getElementById('af-avail');
   const planetId = Number(document.getElementById('af-planet').value);
   if (!planetId || !afAllShips.length) { clearAvailStrip(box); return; }
-  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId, universe: activeUniverse });
   if (av.error) { clearAvailStrip(box, av.error); return; }
   renderAvailStrip(box, afAllShips, av.available, 'No ships on this planet.');
 }
@@ -179,7 +179,7 @@ async function updateAfAvail() {
 // Galaxy map (all systems with coords + sector id), fetched once and cached.
 async function loadMap() {
   if (afMap) return afMap;
-  const res = await browser.runtime.sendMessage({ type: 'GET_GALAXY_MAP' });
+  const res = await browser.runtime.sendMessage({ type: 'GET_GALAXY_MAP', universe: activeUniverse });
   if (res.error) throw new Error(res.error);
   const systems = res.systems || [];
   const byId = {};
@@ -191,7 +191,7 @@ async function loadMap() {
 // Systems of a sector (with name/zone/planetCount/visibility), cached.
 async function sectorSystemsFor(sectorId) {
   if (sectorSystems[sectorId]) return sectorSystems[sectorId];
-  const res = await browser.runtime.sendMessage({ type: 'GET_SECTOR_SYSTEMS', sectorId });
+  const res = await browser.runtime.sendMessage({ type: 'GET_SECTOR_SYSTEMS', sectorId, universe: activeUniverse });
   if (res.error) throw new Error(res.error);
   sectorSystems[sectorId] = res.systems || [];
   return sectorSystems[sectorId];
@@ -270,7 +270,7 @@ function readLsConfig() {
     zones: [...lsZoneFilter],
   };
 }
-function saveLiveSearch() { return browser.runtime.sendMessage({ type: 'SET_LIVE_SEARCH', config: readLsConfig() }); }
+function saveLiveSearch() { return browser.runtime.sendMessage({ type: 'SET_LIVE_SEARCH', config: readLsConfig(), universe: activeUniverse }); }
 function saveLiveSearchIfOn() { if (lsRunning) saveLiveSearch(); }
 
 function setLsButton() {
@@ -458,7 +458,7 @@ async function sendMineMission(f) {
   if (!planetId) { alert('Pick a source planet first.'); return; }
 
   status.textContent = 'Checking fleet…';
-  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId, universe: activeUniverse });
   if (av.error) { status.textContent = `Error: ${av.error}`; return; }
   const avail = av.available || {};
 
@@ -495,8 +495,7 @@ async function sendMineMission(f) {
     sourcePlanetId: planetId,
     targetFieldId: f.fieldId,
     ships,
-    miningDuration: MINING_DURATION,
-  });
+    miningDuration: MINING_DURATION,, universe: activeUniverse });
   status.textContent = res.error ? `Send failed: ${res.error}` : `Fleet sent to ${f.name} ✓`;
   if (!res.error) {
     afMiningFieldIds.add(f.fieldId);   // optimistic — GET_MISSIONS can lag right after the send
@@ -508,7 +507,7 @@ async function sendMineMission(f) {
 // "used/max fleet slots" and in-flight mine missions — both come from the
 // missions endpoint. afMiningFieldIds drives the "already mining" row highlight.
 async function refreshSlots() {
-  const mi = await browser.runtime.sendMessage({ type: 'GET_MISSIONS' });
+  const mi = await browser.runtime.sendMessage({ type: 'GET_MISSIONS', universe: activeUniverse });
   if (mi.maxFleetSlots != null) {
     document.getElementById('af-slots').textContent = `${(mi.missions || []).length}/${mi.maxFleetSlots} fleet slots`;
   }

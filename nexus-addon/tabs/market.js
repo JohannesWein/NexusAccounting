@@ -5,7 +5,7 @@
 // so "buy" filters on offerResource and "sell" on requestResource. Ratio is
 // received-per-given (offerAmount / requestAmount) — higher is a better deal.
 
-import { applySort, attachSortable, fmt } from '../common.js';
+import { applySort, attachSortable, fmt, activeUniverse } from '../common.js';
 
 const ICON_BASE = 'https://s0.nexuslegacy.space/images/resources/';
 // All tradable resources, always shown as filter icons (basic first, then exotic).
@@ -67,7 +67,7 @@ export async function initMarketTab() {
   if (inited) return;
   inited = true;
   // Alliance membership colours alliance sellers green; reused across sources.
-  browser.runtime.sendMessage({ type: 'GET_ALLIANCE' }).then(a => {
+  browser.runtime.sendMessage({ type: 'GET_ALLIANCE', universe: activeUniverse }).then(a => {
     allianceMembers = new Set((a && !a.error && a.memberIds) || []);
     renderMarket();
   });
@@ -87,13 +87,13 @@ async function loadOrders() {
   });
 
   if (alliance) {
-    const data = await browser.runtime.sendMessage({ type: 'GET_ALLIANCE_ORDERS' });
+    const data = await browser.runtime.sendMessage({ type: 'GET_ALLIANCE_ORDERS', universe: activeUniverse });
     if (data.error) { status.textContent = `Error: ${data.error}`; return; }
     orders = (data.orders || []).map(o => toOrder(o, o.systemName || `#${o.id}`));
   } else {
     const [data, hubs] = await Promise.all([
-      browser.runtime.sendMessage({ type: 'GET_MARKET_ORDERS' }),
-      browser.runtime.sendMessage({ type: 'GET_HUBS' }),
+      browser.runtime.sendMessage({ type: 'GET_MARKET_ORDERS', universe: activeUniverse }),
+      browser.runtime.sendMessage({ type: 'GET_HUBS', universe: activeUniverse }),
     ]);
     if (data.error) { status.textContent = `Error: ${data.error}`; return; }
     const hubNames = {};

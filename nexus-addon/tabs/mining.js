@@ -2,7 +2,7 @@
 
 // ── Mining tab ─────────────────────────────────────────────────────────────
 
-import { EXTRA_RES_KEYS_UI, RARE_WEIGHT, RESOURCE_WEIGHTS, SERIES_GETTERS, appendExtraResourceCards, applySort, attachSortable, combinedLost, computeResourcesLost, computeSeries, emptyResources, filterZone, fmt, fuelEstimate, fuelForMode, getLabelKey, getMode, isUnfiltered, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, recordsForMode, renderLostCards, renderNetCards, renderPagedTable, store, windowActive, zeroCell, zoneCell } from '../common.js';
+import { EXTRA_RES_KEYS_UI, RARE_WEIGHT, RESOURCE_WEIGHTS, SERIES_GETTERS, appendExtraResourceCards, applySort, attachSortable, combinedLost, computeResourcesLost, computeSeries, emptyResources, filterZone, fmt, fuelEstimate, fuelForMode, getLabelKey, getMode, isUnfiltered, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, recordsForMode, renderLostCards, renderNetCards, renderPagedTable, store, windowActive, zeroCell, zoneCell, activeUniverse } from '../common.js';
 
 // Weighted value (ore×1, silicates×2, hydrogen×3, alloys×5, exotics×10), matching
 // the Net cards. Reads flat resource keys and an optional `rare` map.
@@ -20,7 +20,7 @@ function weightedValue(res) {
 let _sysMap = null;
 async function systemNameToId() {
   if (_sysMap) return _sysMap;
-  const map = await browser.runtime.sendMessage({ type: 'GET_GALAXY_MAP' });
+  const map = await browser.runtime.sendMessage({ type: 'GET_GALAXY_MAP', universe: activeUniverse });
   _sysMap = {};
   for (const s of (map.systems || [])) _sysMap[s.name] = s.id;
   return _sysMap;

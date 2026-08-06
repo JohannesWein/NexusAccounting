@@ -2,7 +2,7 @@
 // both kinds share one background store (exp_*), tagged per-record by `kind`.
 
 import { loadFleetTemplates } from './fleets.js';
-import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeRawLossCost, computeSeries, editFleetDialog, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, inWindowRange, makeMissionBar, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, store, windowActive, zeroCell, zoneCell } from '../common.js';
+import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeRawLossCost, computeSeries, editFleetDialog, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, inWindowRange, makeMissionBar, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, store, windowActive, zeroCell, zoneCell, activeUniverse } from '../common.js';
 
 export let chartExpeditions, chartExpComp;
 
@@ -35,8 +35,8 @@ async function initExpeditionLaunch() {
   eLaunchInited = true;
 
   const [planets, ships] = await Promise.all([
-    browser.runtime.sendMessage({ type: 'GET_PLANETS' }),
-    browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' }),
+    browser.runtime.sendMessage({ type: 'GET_PLANETS', universe: activeUniverse }),
+    browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS', universe: activeUniverse }),
   ]);
   ePlanets = planets.planets || [];
   eAllShips = ships.ships || [];
@@ -145,7 +145,7 @@ function applyDepthRange() {
 async function resolveExpeditionShips(planetId) {
   const presetKey = document.getElementById('e-launch-preset').value;
   const preset = EXPEDITION_PRESETS[presetKey];
-  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId, universe: activeUniverse });
   if (av.error) return { error: av.error };
 
   let wanted, name;
@@ -175,7 +175,7 @@ async function updateExpeditionAvail() {
   const box = document.getElementById('e-launch-avail');
   const planetId = Number(document.getElementById('e-launch-planet').value);
   if (!planetId || !eAllShips.length) { clearAvailStrip(box); return; }
-  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId, universe: activeUniverse });
   if (av.error) { clearAvailStrip(box, av.error); return; }
   renderAvailStrip(box, eAllShips, av.available, 'No ships on this planet.');
 }
@@ -187,7 +187,7 @@ let eMissions = [];
 let eTicks = [];   // progress-bar updaters for the current renderExpeditionTransit()
 
 async function refreshExpeditionMissions() {
-  const mi = await browser.runtime.sendMessage({ type: 'GET_MISSIONS' });
+  const mi = await browser.runtime.sendMessage({ type: 'GET_MISSIONS', universe: activeUniverse });
   if (mi.error) return;
   eMissions = (mi.missions || []).filter(m => m.missionType === 'expedition');
   const activeEl = document.getElementById('e-launch-active');
@@ -245,8 +245,7 @@ async function launchExpedition() {
 
   status.textContent = 'Launching…';
   const res = await browser.runtime.sendMessage({
-    type: 'SEND_EXPEDITION', sourcePlanetId: planetId, ships, zone, depth,
-  });
+    type: 'SEND_EXPEDITION', sourcePlanetId: planetId, ships, zone, depth,, universe: activeUniverse });
   if (res.error) { status.textContent = `Launch failed: ${res.error}`; return; }
   status.textContent = 'Expedition launched ✓';
   updateExpeditionAvail();
