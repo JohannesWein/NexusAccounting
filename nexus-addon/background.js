@@ -784,7 +784,8 @@ async function getFleet(planetId, universe = DEFAULT_UNIVERSE) {
       const data = await apiFetch('/api/planets', token, {}, universe);
       targets = (data.planets || []).map(p => p.id);
     } else {
-      targets = [planetId || await getHomePlanetId(token, universe)];
+      // 'home' is the static HTML fallback when the dropdown hasn't been populated yet.
+      targets = [(!planetId || planetId === 'home') ? await getHomePlanetId(token, universe) : planetId];
     }
     const fleet = {};
     for (const id of targets) {
