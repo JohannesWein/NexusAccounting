@@ -6,6 +6,9 @@
 const ext = (typeof browser !== 'undefined' ? browser : chrome);
 const rt = ext.runtime;
 const DASH_URL = rt.getURL('dashboard.html');
+// Universe derived from the game page hostname (e.g. 's0', 'nf').
+const _universe = window.location.hostname.split('.')[0] || 's0';
+const _sk = k => `${_universe}:${k}`;
 
 // lucide-style "line chart" icon, matching the other sidebar icons.
 const ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
@@ -299,8 +302,10 @@ function ensureNoSpinStyle() {
 let fieldsPanel = null;
 async function openFieldsPanel() {
   if (fieldsPanel) { fieldsPanel.remove(); fieldsPanel = null; }
-  const { live_search_last_matches, live_search_last_at, live_search } =
-    await ext.storage.local.get(['live_search_last_matches', 'live_search_last_at', 'live_search']);
+  const { [_sk('live_search_last_matches')]: live_search_last_matches,
+          [_sk('live_search_last_at')]: live_search_last_at,
+          [_sk('live_search')]: live_search } =
+    await ext.storage.local.get([_sk('live_search_last_matches'), _sk('live_search_last_at'), _sk('live_search')]);
   let matches = live_search_last_matches || [];
   const running = !!(live_search && live_search.enabled);
 
@@ -330,33 +335,31 @@ async function openFieldsPanel() {
   // in the picker below, capped to what the planet actually has. Availability is
   // fetched once; switching template just re-caps and re-renders.
   const planetId = live_search && live_search.planetId;
-  const { fleet_templates, template_selections } =
-    await ext.storage.local.get(['fleet_templates', 'template_selections']);
-  const templates = (fleet_templates || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));   // alphabetical picker
+  const ftKey = _sk('fleet_templates');
+  const { [ftKey]: fleet_templates, template_selections } =
+    await ext.storage.local.get([ftKey, 'template_selections']);
+  const templates = (fleet_templates || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   let avail = {};
   if (planetId) {
-    const av = await ext.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+    const av = await ext.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId, universe: _universe });
     if (av && !av.error) avail = av.available || {};
   }
-  // Source planet name + ship catalog (names/icons) for the confirmation dialog.
-  const planets = (await ext.runtime.sendMessage({ type: 'GET_PLANETS' })).planets || [];
+  const planets = (await ext.runtime.sendMessage({ type: 'GET_PLANETS', universe: _universe })).planets || [];
   const planetName = (planets.find(p => p.id === planetId) || {}).name || planetId;
   const shipDefs = {};
-  const nameToId = {};   // ship name → shipDefId, for the recommendation
-  for (const s of ((await ext.runtime.sendMessage({ type: 'GET_SHIP_DEFS' })).ships || [])) {
+  const nameToId = {};
+  for (const s of ((await ext.runtime.sendMessage({ type: 'GET_SHIP_DEFS', universe: _universe })).ships || [])) {
     shipDefs[s.shipDefId] = s;
     if (s.name) nameToId[s.name] = s.shipDefId;
   }
   let tpl = templates.find(t => String(t.id) === String((template_selections || {})['af-template-select'])) || templates[0] || null;
-  let excavator = localStorage.getItem('nx-ls-excavator') === '1';   // +20% capacity toggle
+  let excavator = localStorage.getItem(_sk('nx-ls-excavator')) === '1';
 
-  // "Already mining" row highlight: fields we already control, or with an
-  // active mine mission en route. Mirrors the Asteroids tab's criteria.
-  const me = await ext.runtime.sendMessage({ type: 'GET_AUTH_ME' });
+  const me = await ext.runtime.sendMessage({ type: 'GET_AUTH_ME', universe: _universe });
   const myUsername = (me && !me.error && me.user) ? me.user.username : null;
   let miningFieldIds = new Set();
   async function refreshMiningFieldIds() {
-    const mi = await ext.runtime.sendMessage({ type: 'GET_MISSIONS' });
+    const mi = await ext.runtime.sendMessage({ type: 'GET_MISSIONS', universe: _universe });
     miningFieldIds = new Set(
       (mi.missions || []).filter(m => m.missionType === 'mine' && m.targetFieldId != null).map(m => m.targetFieldId));
   }
@@ -571,7 +574,7 @@ async function openFieldsPanel() {
         buildEditor();
         mineBtn.disabled = true; mineBtn.textContent = '…';
         const res = await ext.runtime.sendMessage({
-          type: 'SEND_MINE', sourcePlanetId: planetId, targetFieldId: m.id, ships: sendShips, miningDuration: 600,
+          type: 'SEND_MINE', sourcePlanetId: planetId, targetFieldId: m.id, ships: sendShips, miningDuration: 600, universe: _universe,
         });
         if (res && res.error) { mineBtn.textContent = '⛏'; mineBtn.disabled = false; window.alert(`Send failed: ${res.error}`); }
         else {
@@ -587,7 +590,7 @@ async function openFieldsPanel() {
       fuelTd.style.cssText = 'padding:4px 6px';
       fuelTd.textContent = `${ships.length ? '…' : '—'} (${m.system})`;
       if (ships.length && m.systemId != null) {
-        ext.runtime.sendMessage({ type: 'GET_FUEL_ESTIMATE', body: { sourcePlanetId: planetId, targetSystemId: m.systemId, ships } })
+        ext.runtime.sendMessage({ type: 'GET_FUEL_ESTIMATE', body: { sourcePlanetId: planetId, targetSystemId: m.systemId, ships }, universe: _universe })
           .then(est => { fuelTd.textContent = `${est && est.fuelCost != null ? est.fuelCost : '?'} (${m.system})`; })
           .catch(() => { fuelTd.textContent = `? (${m.system})`; });
       }
@@ -616,12 +619,12 @@ async function openFieldsPanel() {
   // Live-refresh title/timestamp/rows when a background scan writes new results,
   // so the window doesn't sit on a stale "as of" time. Self-removes once closed.
   function onScan(changes, area) {
-    if (area !== 'local' || !('live_search_last_at' in changes || 'live_search_last_matches' in changes)) return;
+    if (area !== 'local' || !(_sk('live_search_last_at') in changes || _sk('live_search_last_matches') in changes)) return;
     if (!panel.isConnected) { ext.storage.onChanged.removeListener(onScan); return; }
-    ext.storage.local.get(['live_search_last_matches', 'live_search_last_at']).then(d => {
-      matches = d.live_search_last_matches || [];
+    ext.storage.local.get([_sk('live_search_last_matches'), _sk('live_search_last_at')]).then(d => {
+      matches = d[_sk('live_search_last_matches')] || [];
       title.textContent = `Asteroid matches (${matches.length})`;
-      sub.textContent = d.live_search_last_at ? `as of ${new Date(d.live_search_last_at).toLocaleTimeString()}` : 'no scan yet';
+      sub.textContent = d[_sk('live_search_last_at')] ? `as of ${new Date(d[_sk('live_search_last_at')]).toLocaleTimeString()}` : 'no scan yet';
       renderRows();
     });
   }
@@ -645,14 +648,14 @@ async function openFieldsPanel() {
   paintToggle();
   toggleBtn.onclick = async () => {
     if (curRunning) {
-      await ext.runtime.sendMessage({ type: 'STOP_LIVE_SEARCH' });
+      await ext.runtime.sendMessage({ type: 'STOP_LIVE_SEARCH', universe: _universe });
       curRunning = false;
     } else {
       if (!live_search || live_search.planetId == null) {
         window.alert('Configure live search in the Tracker’s Asteroids tab first (planet + filters).');
         return;
       }
-      await ext.runtime.sendMessage({ type: 'SET_LIVE_SEARCH', config: { ...live_search, enabled: true } });
+      await ext.runtime.sendMessage({ type: 'SET_LIVE_SEARCH', config: { ...live_search, enabled: true }, universe: _universe });
       curRunning = true;
     }
     paintToggle();
@@ -702,6 +705,6 @@ ext.runtime.onMessage.addListener(msg => {
 });
 
 // Game tab opened from a notification with no tab previously open: show the panel.
-ext.storage.local.get('live_search_open_panel').then(({ live_search_open_panel }) => {
-  if (live_search_open_panel) { ext.storage.local.set({ live_search_open_panel: false }); openFieldsPanel(); }
+ext.storage.local.get(_sk('live_search_open_panel')).then(d => {
+  if (d[_sk('live_search_open_panel')]) { ext.storage.local.set({ [_sk('live_search_open_panel')]: false }); openFieldsPanel(); }
 });

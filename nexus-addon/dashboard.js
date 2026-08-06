@@ -67,13 +67,15 @@ export async function loadAll(universe) {
 export async function updateStorageFooter() {
   const el = document.getElementById('storage-footer');
   if (!el) return;
+  const u = activeUniverse;
+  const sk = k => u ? `${u}:${k}` : k;
   const all = await browser.storage.local.get(null);
-  const idx = all.archive_index || {};
-  const reports = (idx.survey?.count || all.recent_reports?.length || 0) +
-    (idx.pirate?.count || all.pirate_recent_reports?.length || 0) +
-    (idx.mining?.count || all.mining_recent_reports?.length || 0) +
-    (idx.exp?.count || all.exp_recent_reports?.length || 0) +
-    (idx.xeno?.count || all.xeno_recent_reports?.length || 0);
+  const idx = all[sk('archive_index')] || {};
+  const reports = (idx.survey?.count || (all[sk('recent_reports')] || []).length) +
+    (idx.pirate?.count || (all[sk('pirate_recent_reports')] || []).length) +
+    (idx.mining?.count || (all[sk('mining_recent_reports')] || []).length) +
+    (idx.exp?.count || (all[sk('exp_recent_reports')] || []).length) +
+    (idx.xeno?.count || (all[sk('xeno_recent_reports')] || []).length);
   let bytes = 0;
   try { bytes = JSON.stringify(all).length; } catch { /* ignore */ }
   const size = bytes > 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;

@@ -19,15 +19,16 @@ export function universeKey(hostname) { return (hostname || '').split('.')[0] ||
 
 export const PER_PAGE = 20;
 
-// shipDefId → def ({ name, imageUrl, … }), fetched once and cached.
-let _shipDefs = null;
+// shipDefId → def ({ name, imageUrl, … }), fetched once and cached per universe.
+const _shipDefsCache = {};
 async function shipDefs() {
-  if (!_shipDefs) {
-    const res = await browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' });
-    _shipDefs = {};
-    for (const s of (res.ships || [])) _shipDefs[s.shipDefId] = s;
+  const u = activeUniverse || 's0';
+  if (!_shipDefsCache[u]) {
+    const res = await browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS', universe: u });
+    _shipDefsCache[u] = {};
+    for (const s of (res.ships || [])) _shipDefsCache[u][s.shipDefId] = s;
   }
-  return _shipDefs;
+  return _shipDefsCache[u];
 }
 export async function shipName(id) {
   return (await shipDefs())[id]?.name || `#${id}`;
@@ -456,6 +457,7 @@ export async function fuelEstimate(sourcePlanetId, targetSystemId, ships) {
   const est = await browser.runtime.sendMessage({
     type: 'GET_FUEL_ESTIMATE',
     body: { sourcePlanetId, targetSystemId, ships },
+    universe: activeUniverse,
   });
   if (!est.error) _fuelCache.set(key, est);
   return est;
